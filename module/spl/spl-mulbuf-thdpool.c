@@ -25,6 +25,9 @@ static int mbtp_thread_routine(void *args)
 
 	while(!kthread_should_stop()){
 		tpt->curr_state = tpt->next_state;
+
+		printk(KERN_INFO "sha256-queue tpt %p is ready to go %d", tpt, tpt->curr_state);
+
 		switch(tpt->next_state) {
 		case THREAD_SETUP:
 			tpt->next_state = THREAD_READY;
@@ -177,6 +180,8 @@ int mulbuf_thdpool_create(mulbuf_thdpool_t **pool_r, const char *name, int threa
 			remove_wait_queue(&tpt->thread_waitq, &pool_wait);
 		}
 		spin_unlock_irqrestore(&tpt->thd_lock, flags);
+
+		printk(KERN_INFO "sha256-queue tpt %p ", tpt);
 
 		/* new thread is attached to idle list */
 		list_add_tail(&tpt->pool_entry, &pool->plthread_idle_list);

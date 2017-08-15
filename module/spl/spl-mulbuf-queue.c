@@ -40,6 +40,7 @@ int mbtp_queue_create(mbtp_queue_t **queue_r, const char *name, mulbuf_thdpool_t
 	for (i = 0; i < queue->min_threadcnt; i++) {
 		/* get thread and attach it to list */
 		if(!mulbuf_thdpool_get_thread(queue->pool, &tpt)) {
+			printk(KERN_INFO "sha256-queue tpt %p attached to queue %p", tpt, queue);
 			list_add_tail(&tpt->queue_entry, &queue->plthread_list);
 			tpt->queue = queue;
 			mbtp_thread_run_fn(tpt, queue->thread_fn, (void *)tpt);
@@ -68,13 +69,14 @@ void mbtp_queue_destroy(mbtp_queue_t *queue)
 
 	/* cancel unassigned taskjobs */
 	while (!list_empty(&queue->task_list)) {
-		tj = list_first_entry(queue->task_list.next, mbtp_task_t, queue_entry);
+		tj = list_entry(queue->task_list.next, mbtp_task_t, queue_entry);
 		list_del(&tj->queue_entry);
 		/* tag this task as cancelled */
 		tj->processsed = 2;
 		tj->cb_fn(tj, tj->cb_arg);
 		queue->curr_taskcnt--;
 	}
+
 
 	/* validate thread state */
 	list_for_each(l, &queue->plthread_list) {
@@ -86,13 +88,20 @@ void mbtp_queue_destroy(mbtp_queue_t *queue)
 	wake_up_all(&queue->queue_waitq);
 	spin_unlock_irqrestore(&queue->queue_lock, flags);
 
+
 	/** detach threads from queue
 	 *
 	 * since threads will not operate queue elements, there is no need to lock queue
 	 */
 	list_for_each_safe(l, l_tmp, &queue->plthread_list) {
+		printk(KERN_INFO "sha256-queue %p destroy thd list %p", queue, l);
+
 		/* check and wait whether this tqt is left */
 		tpt = list_entry(l, mbtp_thread_t, queue_entry);
+
+		printk(KERN_INFO "sha256-queue %p destroy thd %p", queue, tpt);
+
+
 		spin_lock_irqsave(&tpt->thd_lock, flags);
 
 		/* thread may be going ready or running */

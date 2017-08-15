@@ -16,4 +16,7 @@
 
 void mulbuf_sha256_fn(void *args);
 
+int mulbuf_queue_sha256_init(void);
+void mulbuf_queue_sha256_fini(void);
+
 #endif /* MULBUF_QUEUE_SHA256_H_ */

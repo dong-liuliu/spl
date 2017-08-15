@@ -267,7 +267,7 @@ int sha256_mb_snoop_proc(mbtp_thread_t *tqt, sha256_aux_t *aux, int thd)
 		queue->idle_threadcnt--;
 		// take tasks out
 		for (i = 0; i < take_num; i++) {
-			job = list_first_entry(queue->task_list.next, mbtp_task_t, queue_entry);
+			job = list_entry(queue->task_list.next, mbtp_task_t, queue_entry);
 			list_del(&job->queue_entry);
 			jobs[i] = job;
 		}
@@ -347,7 +347,9 @@ void mulbuf_sha256_fn(void *arg)
 	state = HASH_WAIT;
 
 	spin_lock(&queue->queue_lock);
-	while(1){
+	while(state != HASH_EXIT){
+
+		printk(KERN_INFO "sha256-queue tpt %p is in hash state %d ", tpt, state);
 		switch(state){
 		case HASH_WAIT:
 			/* if queue is leaving, start to leave at first */
@@ -416,3 +418,46 @@ void mulbuf_sha256_fn(void *arg)
 
 	return;
 }
+
+
+#define NQUEUE	3
+mulbuf_thdpool_t *pool;
+mbtp_queue_t *queues[NQUEUE] = {NULL};
+
+int mulbuf_queue_sha256_init(void)
+{
+	int threadcnt = 10;
+	int max_threadcnt = 20;
+	char namep[] = "sha256mb-pool";
+	char nameq[] = "sha256mb-queue";
+	int rc, i;
+	mbtp_thread_t *tpt;
+
+
+	printk(KERN_INFO "sha256-pool create");
+	rc = mulbuf_thdpool_create(&pool, namep, threadcnt, max_threadcnt);
+
+	tpt = list_entry(pool->plthread_idle_list.next, mbtp_thread_t, pool_entry);
+			printk(KERN_INFO "sha256-pool thd tpt %p", tpt);
+
+	for (i = 0; i < NQUEUE; i++) {
+		printk(KERN_INFO "sha256-queue %d create", i);
+		mbtp_queue_create(&queues[i], nameq, pool,
+				6, 10, mulbuf_sha256_fn);
+	}
+
+	return rc;
+}
+
+void mulbuf_queue_sha256_fini(void)
+{
+	int i;
+
+	for (i = 0; i < NQUEUE; i++) {
+		printk(KERN_INFO "sha256-queue %d %p destroy", i, queues[i]);
+		mbtp_queue_destroy(queues[i]);
+	}
+	printk(KERN_INFO "sha256-pool destroy");
+	mulbuf_thdpool_destroy(pool);
+}
+
