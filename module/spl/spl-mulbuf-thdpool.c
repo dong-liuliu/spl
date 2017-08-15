@@ -36,7 +36,8 @@ static int mbtp_thread_routine(void *args)
 		case THREAD_READY:
 			/* tqt->next_state is determined by queue or pool during wait */
 			add_wait_queue_exclusive(&tpt->thread_waitq, &wait);
-			spin_unlock_irqstore(&tpt->thd_lock, flags);
+			spin_unlock_irqrestore(&tpt->thd_lock, flags);
+
 			set_current_state(TASK_INTERRUPTIBLE);
 
 			schedule();
@@ -203,7 +204,7 @@ void mulbuf_thdpool_destroy(mulbuf_thdpool_t *pool)
 
 	/* notify threads to leave */
 	while(!list_empty(&pool->plthread_idle_list)){
-		tpt = list_first_entry(&pool->plthread_idle_list.next, mbtp_thread_t, pool_entry);
+		tpt = list_entry(pool->plthread_idle_list.next, mbtp_thread_t, pool_entry);
 		list_del(&tpt->pool_entry);
 		/* check and wait whether this tqt is left */
 		spin_lock_irqsave(&tpt->thd_lock, flags);
@@ -272,7 +273,7 @@ int mulbuf_thdpool_get_thread(mulbuf_thdpool_t *pool, mbtp_thread_t **tpt_r)
 	if (pool->idle_threadcnt > 0) {
 		pool->idle_threadcnt--;
 
-		tpt = list_first_entry(pool->plthread_idle_list.next, mbtp_thread_t, pool_entry);
+		tpt = list_entry(pool->plthread_idle_list.next, mbtp_thread_t, pool_entry);
 		list_del(&tpt->pool_entry);
 		list_add_tail(&tpt->pool_entry, &pool->plthread_busy_list);
 		spin_unlock_irqrestore(&pool->pool_lock, flags);

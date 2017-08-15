@@ -1,4 +1,8 @@
 
+#include <linux/interrupt.h>
+#include <linux/kthread.h>
+#include <sys/kmem.h>
+
 #include <sys/mulbuf_queue.h>
 
 int mbtp_queue_create(mbtp_queue_t **queue_r, const char *name, mulbuf_thdpool_t *pool,
@@ -57,7 +61,7 @@ void mbtp_queue_destroy(mbtp_queue_t *queue)
 	mbtp_task_t *tj;
 	unsigned long flags;
 
-	struct list_head l, l_tmp;
+	struct list_head *l, *l_tmp;
 
 	spin_lock_irqsave(&queue->queue_lock, flags);
 	queue->leave = 1;
@@ -73,7 +77,7 @@ void mbtp_queue_destroy(mbtp_queue_t *queue)
 	}
 
 	/* validate thread state */
-	list_for_each(l, queue->plthread_list) {
+	list_for_each(l, &queue->plthread_list) {
 		tpt = list_entry(l, mbtp_thread_t, queue_entry);
 		ASSERT(tpt->next_state == THREAD_RUNNING);
 	}
@@ -86,7 +90,7 @@ void mbtp_queue_destroy(mbtp_queue_t *queue)
 	 *
 	 * since threads will not operate queue elements, there is no need to lock queue
 	 */
-	list_for_each_safe(l, l_tmp, queue->plthread_list) {
+	list_for_each_safe(l, l_tmp, &queue->plthread_list) {
 		/* check and wait whether this tqt is left */
 		tpt = list_entry(l, mbtp_thread_t, queue_entry);
 		spin_lock_irqsave(&tpt->thd_lock, flags);
@@ -101,7 +105,7 @@ void mbtp_queue_destroy(mbtp_queue_t *queue)
 
 			__set_current_state(TASK_RUNNING);
 			spin_lock_irqsave(&tpt->thd_lock, flags);
-			remove_wait_queue(&tpt->thread_waitq, &pool_wait);
+			remove_wait_queue(&tpt->thread_waitq, &queue_wait);
 		}
 
 		spin_unlock_irqrestore(&tpt->thd_lock, flags);
@@ -266,7 +270,7 @@ void mbtp_queue_submit_job(mbtp_task_t *mb_task, mbtp_queue_t *queue)
 	if (queue->curr_taskcnt == 1)
 		wake_up(&queue->queue_waitq);
 
-	spin_lock_irqrestore(&queue->queue_lock, flags);
+	spin_unlock_irqrestore(&queue->queue_lock, flags);
 
 	return;
 }

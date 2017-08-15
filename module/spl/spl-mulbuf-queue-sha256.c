@@ -1,7 +1,8 @@
 
 #include <sys/mulbuf_queue_sha256.h>
 // TODO isa-l header location
-#include <isa-l.h>
+//#include <isa-l.h>
+#include <sys/sha256_mb.h>
 
 int sha256_mb_concurrent_lanes(void)
 {
@@ -216,13 +217,14 @@ int sha256_mb_auxiliary_init(sha256_aux_t **aux_r)
 	SHA256_HASH_CTX_MGR *mgr;
 	int i;
 
-	aux = (sha256_aux_t *)kmem_alloc(sizeof(*aux), KM_SLEEP | ZERO);
+	aux = (sha256_aux_t *)kmem_alloc(sizeof(*aux), KM_SLEEP | KM_ZERO);
 	*aux_r = aux;
 	if(aux == NULL)
 		return 1;
 
 	// TODO memalign allocation
-	posix_memalign((void *)&mgr, 16, sizeof(SHA256_HASH_CTX_MGR));
+	//posix_memalign((void *)&mgr, 16, sizeof(SHA256_HASH_CTX_MGR));
+	mgr =( SHA256_HASH_CTX_MGR *)kmem_alloc(sizeof(*mgr), KM_SLEEP | KM_ZERO);
 	aux->mgr = mgr;
 	sha256_ctx_mgr_init(mgr);
 
@@ -266,7 +268,7 @@ int sha256_mb_snoop_proc(mbtp_thread_t *tqt, sha256_aux_t *aux, int thd)
 		// take tasks out
 		for (i = 0; i < take_num; i++) {
 			job = list_first_entry(queue->task_list.next, mbtp_task_t, queue_entry);
-			list_del(&job->queue_entry)
+			list_del(&job->queue_entry);
 			jobs[i] = job;
 		}
 
@@ -281,7 +283,7 @@ int sha256_mb_snoop_proc(mbtp_thread_t *tqt, sha256_aux_t *aux, int thd)
 				snoop = 0;
 			}else{
 			/* no snoop if this thread is full and can add an extra thread into queue */
-				taskqueue_add_thread(queue);
+				mbtp_queue_add_thread(queue);
 				/* check whether need to signal next thread */
 				if(queue->curr_taskcnt > 0 && queue->idle_threadcnt > 0)
 					wake_up(&queue->queue_waitq);
@@ -332,7 +334,7 @@ void mulbuf_sha256_fn(void *arg)
 {
 	DECLARE_WAITQUEUE(thd_wait, current);
 	hash_fn_state_t state;
-	mbtp_thread_t *tpt = (taskq_thread_t *)arg;
+	mbtp_thread_t *tpt = (mbtp_thread_t *)arg;
 	mbtp_queue_t *queue = tpt->queue;
 
 	int concurrent_num;
@@ -354,7 +356,7 @@ void mulbuf_sha256_fn(void *arg)
 				break;
 			}
 			/* shrink thread */
-			if(taskqueue_check_shrink_thread(queue, concurrent_num) == 0){
+			if(mbtp_queue_check_shrink_thread(queue, concurrent_num) == 0){
 				state = HASH_EXIT;
 				break;
 			}
