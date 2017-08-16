@@ -35,12 +35,12 @@ int mbtp_queue_create(mbtp_queue_t **queue_r, const char *name, mulbuf_thdpool_t
 	queue->total_taskcnt = 0;
 
 	init_waitqueue_head(&queue->queue_waitq);
-	spin_lock_init(&pool->pool_lock);
+	spin_lock_init(&queue->queue_lock);
 
 	for (i = 0; i < queue->min_threadcnt; i++) {
 		/* get thread and attach it to list */
 		if(!mulbuf_thdpool_get_thread(queue->pool, &tpt)) {
-			printk(KERN_INFO "sha256-queue tpt %p attached to queue %p", tpt, queue);
+			dprintk("sha256-queue tpt %p attached to queue %p", tpt, queue);
 			list_add_tail(&tpt->queue_entry, &queue->plthread_list);
 			tpt->queue = queue;
 			mbtp_thread_run_fn(tpt, queue->thread_fn, (void *)tpt);
@@ -64,9 +64,13 @@ void mbtp_queue_destroy(mbtp_queue_t *queue)
 
 	struct list_head *l, *l_tmp;
 
-	spin_lock_irqsave(&queue->queue_lock, flags);
+
+	dprintk("sha256-queue %p is trying to lock queue\n", queue);
+	spin_lock(&queue->queue_lock);
 	queue->leave = 1;
 
+
+	dprintk("sha256-queue %p starts to destroy\n", queue);
 	/* cancel unassigned taskjobs */
 	while (!list_empty(&queue->task_list)) {
 		tj = list_entry(queue->task_list.next, mbtp_task_t, queue_entry);
@@ -86,7 +90,7 @@ void mbtp_queue_destroy(mbtp_queue_t *queue)
 
 	/* wake waiting threads to leave */
 	wake_up_all(&queue->queue_waitq);
-	spin_unlock_irqrestore(&queue->queue_lock, flags);
+	spin_unlock(&queue->queue_lock);
 
 
 	/** detach threads from queue
@@ -94,30 +98,30 @@ void mbtp_queue_destroy(mbtp_queue_t *queue)
 	 * since threads will not operate queue elements, there is no need to lock queue
 	 */
 	list_for_each_safe(l, l_tmp, &queue->plthread_list) {
-		printk(KERN_INFO "sha256-queue %p destroy thd list %p", queue, l);
 
 		/* check and wait whether this tqt is left */
 		tpt = list_entry(l, mbtp_thread_t, queue_entry);
 
-		printk(KERN_INFO "sha256-queue %p destroy thd %p", queue, tpt);
+		dprintk("sha256-queue %p destroy thd %p", queue, tpt);
 
 
-		spin_lock_irqsave(&tpt->thd_lock, flags);
+		spin_lock(&tpt->thd_lock);
+		dprintk("sha256-queue thd %p in state %d", tpt, tpt->next_state);
 
 		/* thread may be going ready or running */
 		if (tpt->next_state != THREAD_READY) {
 			add_wait_queue_exclusive(&tpt->thread_waitq, &queue_wait);
-			spin_unlock_irqrestore(&tpt->thd_lock, flags);
+			spin_unlock(&tpt->thd_lock);
 			set_current_state(TASK_INTERRUPTIBLE);
 
 			schedule();
 
 			__set_current_state(TASK_RUNNING);
-			spin_lock_irqsave(&tpt->thd_lock, flags);
+			spin_lock(&tpt->thd_lock);
 			remove_wait_queue(&tpt->thread_waitq, &queue_wait);
 		}
 
-		spin_unlock_irqrestore(&tpt->thd_lock, flags);
+		spin_unlock(&tpt->thd_lock);
 		mbtp_queue_shrink_thread(queue, tpt);
 	}
 
@@ -269,7 +273,7 @@ void mbtp_queue_submit_job(mbtp_task_t *mb_task, mbtp_queue_t *queue)
 {
 	unsigned long flags;
 
-	spin_lock_irqsave(&queue->queue_lock, flags);
+	spin_lock(&queue->queue_lock);
 
 	queue->curr_taskcnt++;
 	queue->total_taskcnt++;
@@ -279,7 +283,7 @@ void mbtp_queue_submit_job(mbtp_task_t *mb_task, mbtp_queue_t *queue)
 	if (queue->curr_taskcnt == 1)
 		wake_up(&queue->queue_waitq);
 
-	spin_unlock_irqrestore(&queue->queue_lock, flags);
+	spin_unlock(&queue->queue_lock);
 
 	return;
 }

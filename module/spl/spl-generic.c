@@ -34,6 +34,7 @@
 #include <sys/mutex.h>
 #include <sys/rwlock.h>
 #include <sys/taskq.h>
+#include <sys/mulbuf_queue_sha256.h>
 #include <sys/tsd.h>
 #include <sys/zmod.h>
 #include <sys/debug.h>
@@ -644,6 +645,8 @@ spl_init(void)
 
 	if ((rc = spl_taskq_init()))
 		goto out5;
+	if ((rc = mulbuf_queue_sha256_init()))
+		goto out5;
 
 	if ((rc = spl_kmem_cache_init()))
 		goto out6;
@@ -673,6 +676,7 @@ out8:
 out7:
 	spl_kmem_cache_fini();
 out6:
+	mulbuf_queue_sha256_fini();
 	spl_taskq_fini();
 out5:
 	spl_tsd_fini();
@@ -700,6 +704,7 @@ spl_fini(void)
 	spl_proc_fini();
 	spl_vn_fini();
 	spl_kmem_cache_fini();
+	mulbuf_queue_sha256_fini();
 	spl_taskq_fini();
 	spl_tsd_fini();
 	spl_rw_fini();

@@ -170,7 +170,8 @@ int sha256_mb_count_complete(SHA256_HASH_CTX ctxpool[], int concurrent_num)
 	   *				sha256-zfs is C6848756 A62F007C ...
 	   *				sha256-ossl is 7C002FA6 568784C6 ...
 	   */
-
+//#define OPENSSL-SHA256
+#ifndef OPENSSL-SHA256
 	    // change sha256-mb to sha256-zfs
 		H = (uint32_t *)ctxpool[sidx].job.result_digest;
 		*(uint64_t *)&job->digest[0] = (uint64_t)H[0] << 32 | H[1];
@@ -178,8 +179,8 @@ int sha256_mb_count_complete(SHA256_HASH_CTX ctxpool[], int concurrent_num)
 		*(uint64_t *)&job->digest[16] = (uint64_t)H[4] << 32 | H[5];
 		*(uint64_t *)&job->digest[24] = (uint64_t)H[6] << 32 | H[7];
 
-
-		/* change sha256-mb to sha256-ossl
+#else
+		// change sha256-mb to sha256-ossl
 		H = (uint32_t *)ctxpool[sidx].job.result_digest;
 		*(uint32_t *)&job->digest[0] = byteswap32(H[0]);
 		*(uint32_t *)&job->digest[4] = byteswap32(H[1]);
@@ -189,10 +190,11 @@ int sha256_mb_count_complete(SHA256_HASH_CTX ctxpool[], int concurrent_num)
 		*(uint32_t *)&job->digest[20] = byteswap32(H[5]);
 		*(uint32_t *)&job->digest[24] = byteswap32(H[6]);
 		*(uint32_t *)&job->digest[28] = byteswap32(H[7]);
-		*/
+#endif
 
 		job->processsed = 1;
-		job->cb_fn(job, job->cb_arg);
+		if (job->cb_fn)
+			job->cb_fn(job, job->cb_arg);
 
 		hash_ctx_init(&ctxpool[sidx]);
 		/* user_data is used to judge just now completed ctxpool */
@@ -346,10 +348,11 @@ void mulbuf_sha256_fn(void *arg)
 
 	state = HASH_WAIT;
 
+	dprintk("sha256-tpt %p is trying lock queue\n", tpt);
 	spin_lock(&queue->queue_lock);
 	while(state != HASH_EXIT){
 
-		printk(KERN_INFO "sha256-queue tpt %p is in hash state %d ", tpt, state);
+		dprintk("sha256-queue tpt %p is in hash state %d\n", tpt, state);
 		switch(state){
 		case HASH_WAIT:
 			/* if queue is leaving, start to leave at first */
@@ -419,45 +422,58 @@ void mulbuf_sha256_fn(void *arg)
 	return;
 }
 
+static void mulbuf_sha256_cb(mbtp_task_t *mb_task, void *arg)
+{
+	struct completion *cmp = (struct completion *)arg;
+	complete(cmp);
+}
 
+int mulbuf_sha256(void *buffer, size_t size, unsigned char *digest, mbtp_queue_t *queue)
+{
+	mbtp_task_t task;
+
+	struct completion cmpt;
+	init_completion(&cmpt);
+
+	task.buffer = buffer;
+	task.size = size;
+	task.digest = digest;
+
+	task.cb_fn = mulbuf_sha256_cb;
+	task.cb_arg = &cmpt;
+	task.processsed = 0;
+
+	mbtp_queue_submit_job(&task, queue);
+
+	wait_for_completion(&cmpt);
+
+	if (task.processsed == 1) {
+		return 0;
+	}else {
+		return 1;
+	}
+}
+
+#include <sys/mulbuf_test.h>
 #define NQUEUE	3
 mulbuf_thdpool_t *pool;
 mbtp_queue_t *queues[NQUEUE] = {NULL};
 
 int mulbuf_queue_sha256_init(void)
 {
-	int threadcnt = 10;
-	int max_threadcnt = 20;
-	char namep[] = "sha256mb-pool";
-	char nameq[] = "sha256mb-queue";
-	int rc, i;
-	mbtp_thread_t *tpt;
-
-
-	printk(KERN_INFO "sha256-pool create");
-	rc = mulbuf_thdpool_create(&pool, namep, threadcnt, max_threadcnt);
-
-	tpt = list_entry(pool->plthread_idle_list.next, mbtp_thread_t, pool_entry);
-			printk(KERN_INFO "sha256-pool thd tpt %p", tpt);
-
-	for (i = 0; i < NQUEUE; i++) {
-		printk(KERN_INFO "sha256-queue %d create", i);
-		mbtp_queue_create(&queues[i], nameq, pool,
-				6, 10, mulbuf_sha256_fn);
-	}
+	int rc = 0;
 
 	return rc;
 }
 
 void mulbuf_queue_sha256_fini(void)
 {
-	int i;
 
-	for (i = 0; i < NQUEUE; i++) {
-		printk(KERN_INFO "sha256-queue %d %p destroy", i, queues[i]);
-		mbtp_queue_destroy(queues[i]);
-	}
-	printk(KERN_INFO "sha256-pool destroy");
-	mulbuf_thdpool_destroy(pool);
+
+	pool_init_fini_test();
+	pool_queue_init_fini_test();
+	one_task_test();
+
+	tasks_test();
 }
 

@@ -12,6 +12,15 @@
 #include <sys/thread.h>
 #include <sys/rwlock.h>
 
+// TODO
+#define DEBU
+#ifdef DEBUG
+#define dprintk(format, ...)    printk(KERN_ERR format, ##__VA_ARGS__)
+#else
+#define dprintk(format, ...)
+#endif
+
+
 typedef void (*threadp_func_t)(void *);
 typedef struct mulbuf_thdpool mulbuf_thdpool_t;	/* thread pool for multi-buffer crypto */
 typedef struct mbtp_thread mbtp_thread_t;	/* thread for multi-buffer thread pool */
