@@ -26,8 +26,10 @@ int sha256_mb_concurrent_lanes(void)
 	return 8;
 }
 
-// TODO make threshold as module param
-int threshold = 128 * 1024;
+int spl_mulbuf_snoop_size_threshold = 128 * 1024;
+module_param(spl_mulbuf_snoop_size_threshold, int, 0644);
+MODULE_PARM_DESC(spl_mulbuf_snoop_size_threshold,
+		"Size threshold for sha256_mb to snoop new tasks");
 
 /*
  * @brief Get first usable ctx from a ctx array
@@ -419,7 +421,7 @@ void mulbuf_sha256_fn(void *arg)
 			break;
 		case HASH_PROCESS:
 		/* get tasks from queue's job list*/
-			sha256_mb_snoop_proc(tpt, aux, threshold);
+			sha256_mb_snoop_proc(tpt, aux, spl_mulbuf_snoop_size_threshold);
 			state = HASH_WAIT;
 			break;
 
@@ -450,101 +452,3 @@ void mulbuf_sha256_fn(void *arg)
 
 	return;
 }
-
-static void mulbuf_sha256_cb(mbtp_task_t *mb_task, void *arg)
-{
-	struct completion *cmp = (struct completion *)arg;
-	complete(cmp);
-}
-
-int mulbuf_sha256(void *buffer, size_t size, unsigned char *digest, mbtp_queue_t *queue)
-{
-	mbtp_task_t task;
-
-	struct completion cmpt;
-	init_completion(&cmpt);
-
-	task.buffer = buffer;
-	task.size = size;
-	task.digest = digest;
-
-	task.cb_fn = mulbuf_sha256_cb;
-	task.cb_arg = &cmpt;
-	task.processsed = 0;
-
-	mbtp_queue_submit_job(&task, queue);
-
-	wait_for_completion(&cmpt);
-
-	if (task.processsed == 1) {
-		return 0;
-	}else {
-		return 1;
-	}
-}
-
-#include <sys/mulbuf_test.h>
-
-typedef struct mulbuf_sha256_suite{
-	mulbuf_thdpool_t *pool;
-	mbtp_queue_t **queues_array;
-	int queue_count;
-}mulbuf_sha256_suite_t;
-
-mulbuf_sha256_suite_t suite;
-
-int mulbuf_queue_sha256_init(void)
-{
-	int threadcnt = 10;
-	int max_threadcnt = 20;
-	char namep[] = "sha256mb-pool";
-	char nameq[] = "sha256mb-queue";
-	int rc, i;
-
-	mulbuf_thdpool_t *pool;
-	int nqueue = 5;
-	mbtp_queue_t **queue_array;
-
-	queue_array = kmem_alloc(sizeof(mbtp_queue_t *) * nqueue, KM_PUSHPAGE);
-
-	printk(KERN_ERR "spl: pool_queue_init_fini_test");
-	printk(KERN_ERR "sha256-pool create");
-	rc = mulbuf_thdpool_create(&pool, namep, threadcnt, max_threadcnt);
-
-	for (i = 0; i < nqueue; i++) {
-		mbtp_queue_create(&queue_array[i], nameq, pool,
-				2, 10, mulbuf_sha256_fn);
-		printk(KERN_ERR "sha256-queue %d %p create", i, queue_array[i]);
-	}
-
-
-	for (i = 0; i < nqueue; i++) {
-		printk(KERN_ERR "sha256-queue %d %p destroy", i, queue_array[i]);
-		mbtp_queue_destroy(queue_array[i]);
-	}
-
-
-	kmem_free(queue_array, sizeof(mbtp_queue_t *) * nqueue);
-
-	printk(KERN_ERR "sha256-pool destroy");
-	mulbuf_thdpool_destroy(pool);
-
-	printk(KERN_ERR "spl: pool_queue_init_fini_test passed");
-
-	return rc;
-}
-
-void mulbuf_queue_sha256_fini(void)
-{
-
-
-	if(1){
-	pool_init_fini_test();
-	pool_queue_init_fini_test();
-	one_task_test();
-
-	tasks_perf();
-	tasks_test();
-	}
-}
-

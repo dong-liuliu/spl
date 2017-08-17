@@ -245,7 +245,7 @@ void one_task_test()
 	}
 
 	zfs_SHA256(msg1, size, digests_ref);
-	rc = mulbuf_sha256(msg1, size, digests, queue_array[0]);
+	rc = mulbuf_sha256_queue_choose(msg1, size, digests, queue_array[0]);
 	 printf_digest(digests, 32);
 	 digest_compare(digests, digests_ref, 32);
 

@@ -31,5 +31,6 @@ $(MODULE)-objs += spl-zlib.o
 $(MODULE)-objs += spl-mulbuf-thdpool.o
 $(MODULE)-objs += spl-mulbuf-queue.o
 $(MODULE)-objs += spl-mulbuf-queue-sha256.o
+$(MODULE)-objs += spl-mulbuf-suite-sha256.o
 $(MODULE)-objs += spl-mulbuf-test.o
 $(MODULE)-objs += isa-l.o_shipped
