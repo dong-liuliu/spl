@@ -4,6 +4,20 @@
 //#include <isa-l.h>
 #include <sys/sha256_mb.h>
 
+#define STACK_ALIGNCALL16(x)  \
+{ \
+    asm("push %rbx"); \
+    asm("mov %rsp, %rbx"); \
+    asm("and $0xfffffffffffffff0, %rsp"); \
+    asm("push %rbx"); \
+    asm("sub $8, %rsp"); \
+    asm("mov (%rbx), %rbx"); \
+    x; \
+    asm("add $8, %rsp"); \
+    asm("pop %rsp"); \
+    asm("add $8, %rsp"); \
+}
+
 int sha256_mb_concurrent_lanes(void)
 {
 	// TODO multi-binary check
@@ -68,6 +82,7 @@ void sha256_mb_length_thd(SHA256_HASH_CTX_MGR *mgr, SHA256_HASH_CTX ctxpool[],
 	unsigned char *buffer;
 	size_t gap, size;
 	mbtp_task_t *job;
+	SHA256_HASH_CTX *tmp;
 
     /* process previous processing jobs */
 	sidx = -1;
@@ -79,10 +94,10 @@ void sha256_mb_length_thd(SHA256_HASH_CTX_MGR *mgr, SHA256_HASH_CTX ctxpool[],
 		/* check whether this is last round */
 		if(thd <= gap){
 			size = thd;
-	    	sha256_ctx_mgr_submit(mgr, &ctxpool[sidx], (void *)buffer, size, HASH_UPDATE);
+			STACK_ALIGNCALL16(sha256_ctx_mgr_submit(mgr, &ctxpool[sidx], (void *)buffer, size, HASH_UPDATE));
 		}else{
 			size = gap;
-	    	sha256_ctx_mgr_submit(mgr, &ctxpool[sidx], (void *)buffer, size, HASH_LAST);
+			STACK_ALIGNCALL16(sha256_ctx_mgr_submit(mgr, &ctxpool[sidx], (void *)buffer, size, HASH_LAST));
 		}
 	}
 
@@ -95,14 +110,16 @@ void sha256_mb_length_thd(SHA256_HASH_CTX_MGR *mgr, SHA256_HASH_CTX ctxpool[],
     		/* link job with ctx */
     		ctxpool[sidx].user_data = (void*)job;
     		if(ta[i]->size <= thd){
-    			sha256_ctx_mgr_submit(mgr, &ctxpool[sidx], ta[i]->buffer, ta[i]->size, HASH_ENTIRE);
+    			STACK_ALIGNCALL16(sha256_ctx_mgr_submit(mgr, &ctxpool[sidx], ta[i]->buffer, ta[i]->size, HASH_ENTIRE));
     		}else{
-    			sha256_ctx_mgr_submit(mgr, &ctxpool[sidx], ta[i]->buffer, thd, HASH_FIRST);
+    			STACK_ALIGNCALL16(sha256_ctx_mgr_submit(mgr, &ctxpool[sidx], ta[i]->buffer, thd, HASH_FIRST));
     		}
     	}
     }
 
-	while (sha256_ctx_mgr_flush(mgr));
+    STACK_ALIGNCALL16(tmp = sha256_ctx_mgr_flush(mgr));
+	while (tmp)
+		STACK_ALIGNCALL16(tmp = sha256_ctx_mgr_flush(mgr));
 
 	return;
 }
@@ -117,6 +134,7 @@ void sha256_mb_length_full(SHA256_HASH_CTX_MGR *mgr, SHA256_HASH_CTX ctxpool[],
 	unsigned char *buffer;
 	size_t gap;
 	mbtp_task_t *job;
+	SHA256_HASH_CTX *tmp;
 
     /* process previous processing jobs */
 	sidx = -1;
@@ -125,7 +143,7 @@ void sha256_mb_length_full(SHA256_HASH_CTX_MGR *mgr, SHA256_HASH_CTX ctxpool[],
 
 		buffer = (unsigned char *)job->buffer + ctxpool[sidx].total_length;
 		gap = job->size - ctxpool[sidx].total_length;
-	    sha256_ctx_mgr_submit(mgr, &ctxpool[sidx], (void *)buffer, gap, HASH_LAST);
+		STACK_ALIGNCALL16(sha256_ctx_mgr_submit(mgr, &ctxpool[sidx], (void *)buffer, gap, HASH_LAST));
 	}
 
 	/* process new taken jobs */
@@ -136,11 +154,13 @@ void sha256_mb_length_full(SHA256_HASH_CTX_MGR *mgr, SHA256_HASH_CTX ctxpool[],
     		/* link job with ctx */
     		ctxpool[sidx].user_data = (void*)ta[i];
 
-    		sha256_ctx_mgr_submit(mgr, &ctxpool[sidx], ta[i]->buffer, ta[i]->size, HASH_ENTIRE);
+    		STACK_ALIGNCALL16(sha256_ctx_mgr_submit(mgr, &ctxpool[sidx], ta[i]->buffer, ta[i]->size, HASH_ENTIRE));
     	}
     }
 
-	while (sha256_ctx_mgr_flush(mgr));
+    STACK_ALIGNCALL16(tmp = sha256_ctx_mgr_flush(mgr));
+	while (tmp)
+		STACK_ALIGNCALL16(tmp = sha256_ctx_mgr_flush(mgr));
 
 	return;
 }
