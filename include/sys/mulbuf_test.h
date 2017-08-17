@@ -6,3 +6,4 @@ void pool_queue_init_fini_test(void);
 void one_task_test(void);
 
 void tasks_test(void);
+void tasks_perf(void);

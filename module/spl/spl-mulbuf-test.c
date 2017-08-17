@@ -174,6 +174,41 @@ void sha256_multi_task_cb(mbtp_task_t *tj, void *arg)
 
 void zfs_SHA256(const void *buf, uint64_t size, unsigned char *digest);
 
+
+#include <linux/time.h>
+
+/*
+ * time measurement and performance computation
+ */
+struct perf{
+        struct timeval tv;
+};
+
+
+inline int perf_start(struct perf *p)
+{
+        do_gettimeofday(&(p->tv));
+        return 0;
+}
+inline int perf_stop(struct perf *p)
+{
+    do_gettimeofday(&(p->tv));
+        return 0;
+}
+
+inline void perf_print(struct perf stop, struct perf start, long long dsize)
+{
+        long long secs = stop.tv.tv_sec - start.tv.tv_sec;
+        long long usecs = secs * 1000000 + stop.tv.tv_usec - start.tv.tv_usec;
+
+        if (dsize != 0) {
+                printk(KERN_ERR "runtime = %10lld usecs, bandwidth %lld MB"
+                        " in %lld msec = %lld MB/s\n", usecs, dsize/(1024*1024),
+                        usecs/1000,  dsize/usecs);
+        }
+}
+
+
 /******************************************************************************
  *
  * task test cases
@@ -278,7 +313,7 @@ void tases_test(testcase_t *tcase)
 		digests_array[i] = kmem_alloc(sizeof(unsigned char) * 32, KM_SLEEP);
 		digests_ref_array[i] = kmem_alloc(sizeof(unsigned char) * 32, KM_SLEEP);
 
-		size = (i+1) * 64 * 1024;
+		size = (i + 1) * 64 * 1024;
 		msgs_array[i] = vmalloc(size);
 		rand_buffer_sampling(msgs_array[i], size);
 
@@ -358,6 +393,143 @@ void tasks_test(void)
 	}
 
 	printk(KERN_ERR "tasks_test is passed\n");
+	return;
+}
+
+
+void tases_perf(testcase_t *tcase)
+{
+	int threadcnt = tcase->pool_threadcnt;
+	int max_threadcnt = tcase->pool_maxthreadcnt;
+	int min_threadcnt = tcase->queue_minthreadcnt;
+	int tasknum = tcase->jobnum;
+
+	char namep[] = "sha256mb-pool";
+	char nameq[] = "sha256mb-queue";
+	int rc, i;
+
+	unsigned char **digests_array;
+	unsigned char **digests_ref_array;
+	unsigned char **msgs_array;
+	size_t size;
+
+	struct perf start, stop;
+
+	mulbuf_thdpool_t *pool;
+	int nqueue = 1;
+	mbtp_queue_t **queue_array;
+	mbtp_task_t *tj_array;
+
+	inform_t *ifm;
+
+	inform_init(&ifm, tasknum);
+
+
+	digests_array = kmem_alloc(sizeof(void *) * tasknum, KM_SLEEP);
+	digests_ref_array = kmem_alloc(sizeof(void *) * tasknum, KM_SLEEP);
+	msgs_array = kmem_alloc(sizeof(void *) * tasknum, KM_SLEEP);
+
+	tj_array = kmem_alloc(sizeof(mbtp_task_t) * tasknum, KM_SLEEP);
+
+	queue_array = kmem_alloc(sizeof(mbtp_queue_t *) * nqueue, KM_SLEEP);
+
+	printk(KERN_ERR "sha256-pool create");
+	rc = mulbuf_thdpool_create(&pool, namep, threadcnt, max_threadcnt);
+
+	for (i = 0; i < nqueue; i++) {
+		mbtp_queue_create(&queue_array[i], nameq, pool,
+				6, 10, mulbuf_sha256_fn);
+		printk(KERN_ERR "sha256-queue %d %p create", i, queue_array[i]);
+	}
+
+	for (i = 0; i < tasknum; i++) {
+		digests_array[i] = kmem_alloc(sizeof(unsigned char) * 32, KM_SLEEP);
+		digests_ref_array[i] = kmem_alloc(sizeof(unsigned char) * 32, KM_SLEEP);
+
+		size = (7+1) * 64 * 1024;
+		msgs_array[i] = vmalloc(size);
+		rand_buffer_sampling(msgs_array[i], size);
+	}
+
+	perf_start(&start);
+	for (i = 0; i < tasknum; i++) {
+		zfs_SHA256(msgs_array[i], size, digests_ref_array[i]);
+	}
+	perf_stop(&stop);
+    printk(KERN_INFO "sha256 ori" ": ");
+    perf_print(stop, start, size * i);
+
+
+	perf_start(&start);
+	for (i = 0; i < tasknum; i++) {
+
+		tj_array[i].buffer = msgs_array[i];
+		tj_array[i].size = size;
+		tj_array[i].digest = digests_array[i];
+		tj_array[i].processsed = 0;
+
+		tj_array[i].cb_fn = sha256_multi_task_cb;
+		tj_array[i].cb_arg = ifm;
+
+		mbtp_queue_submit_job(&tj_array[i], queue_array[0]);
+	}
+	wait_for_completion(&ifm->cmpt);
+
+	perf_stop(&stop);
+    printk(KERN_INFO "sha256 mb" ": ");
+    perf_print(stop, start, size * i);
+
+	for (i = 0; i < tasknum; i++) {
+		digest_compare(digests_array[i], digests_ref_array[i], 32);
+
+		kmem_free(digests_array[i], sizeof(unsigned char) * 32);
+		kmem_free(digests_ref_array[i], sizeof(unsigned char) * 32);
+
+		size = (i+1) * 64 * 1024;
+		vfree(msgs_array[i]);
+	}
+
+	kmem_free(digests_array , sizeof(void *) * tasknum);
+	kmem_free(digests_ref_array, sizeof(void *) * tasknum);
+	kmem_free(msgs_array, sizeof(void *) * tasknum);
+
+	kmem_free(tj_array, sizeof(mbtp_task_t) * tasknum);
+
+	inform_fini(ifm);
+
+	for (i = 0; i < nqueue; i++) {
+		printk(KERN_ERR "sha256-queue %d %p destroy", i, queue_array[i]);
+		mbtp_queue_destroy(queue_array[i]);
+	}
+
+	kmem_free(queue_array, sizeof(mbtp_queue_t *) * nqueue);
+
+	printk(KERN_ERR "sha256-pool destroy");
+	mulbuf_thdpool_destroy(pool);
+
+
+	return;
+}
+
+void tasks_perf(void)
+{
+	int i;
+	testcase_t *tcase;
+	testcase_t tcase_a[] = {
+			/* single thread test */
+			{11, 1, 1, 1}, {20, 1, 1, 1}, {201, 1, 1, 1}, {201, 1, 1, 1},
+			/* multi pool thread test */
+			{11, 1, 4, 1}, {20, 1, 4, 1}, {201, 1, 4, 1}, {201, 1, 4, 1},
+
+	};
+
+	for(i = 0; i < sizeof(tcase_a)/sizeof(tcase_a[0]) ; i++){
+		tcase = &tcase_a[i];
+		printf_tcase(tcase);
+		tases_perf(tcase);
+	}
+
+	printk(KERN_ERR "tasks_perf is passed\n");
 	return;
 }
 

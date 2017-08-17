@@ -3,6 +3,8 @@
 // TODO isa-l header location
 //#include <isa-l.h>
 #include <sys/sha256_mb.h>
+// TODO fpu header judge
+#include <asm/fpu/api.h>
 
 #define STACK_ALIGNCALL16(x)  \
 { \
@@ -84,6 +86,8 @@ void sha256_mb_length_thd(SHA256_HASH_CTX_MGR *mgr, SHA256_HASH_CTX ctxpool[],
 	mbtp_task_t *job;
 	SHA256_HASH_CTX *tmp;
 
+
+	kernel_fpu_begin();
     /* process previous processing jobs */
 	sidx = -1;
 	while((sidx = get_using_hash_ctx(ctxpool, sidx+1, concurrent_num)) != -1){
@@ -121,6 +125,8 @@ void sha256_mb_length_thd(SHA256_HASH_CTX_MGR *mgr, SHA256_HASH_CTX ctxpool[],
 	while (tmp)
 		STACK_ALIGNCALL16(tmp = sha256_ctx_mgr_flush(mgr));
 
+	kernel_fpu_end();
+
 	return;
 }
 /* @brief full mb-hash function with origin threshold
@@ -136,6 +142,7 @@ void sha256_mb_length_full(SHA256_HASH_CTX_MGR *mgr, SHA256_HASH_CTX ctxpool[],
 	mbtp_task_t *job;
 	SHA256_HASH_CTX *tmp;
 
+	kernel_fpu_begin();
     /* process previous processing jobs */
 	sidx = -1;
 	while((sidx = get_using_hash_ctx(ctxpool, sidx+1, concurrent_num)) != -1){
@@ -162,6 +169,8 @@ void sha256_mb_length_full(SHA256_HASH_CTX_MGR *mgr, SHA256_HASH_CTX ctxpool[],
 	while (tmp)
 		STACK_ALIGNCALL16(tmp = sha256_ctx_mgr_flush(mgr));
 
+	kernel_fpu_end();
+
 	return;
 }
 
@@ -170,6 +179,7 @@ inline uint32_t byteswap32(uint32_t x)
 {
 	return (x >> 24) | (x >> 8 & 0xff00) | (x << 8 & 0xff0000) | (x << 24);
 }
+
 /* @brief process completed jobs
  *
  * @returns int number of completed jobs
@@ -190,7 +200,6 @@ int sha256_mb_count_complete(SHA256_HASH_CTX ctxpool[], int concurrent_num)
 	   *				sha256-zfs is C6848756 A62F007C ...
 	   *				sha256-ossl is 7C002FA6 568784C6 ...
 	   */
-//#define OPENSSL-SHA256
 #ifndef OPENSSL-SHA256
 	    // change sha256-mb to sha256-zfs
 		H = (uint32_t *)ctxpool[sidx].job.result_digest;
@@ -475,13 +484,52 @@ int mulbuf_sha256(void *buffer, size_t size, unsigned char *digest, mbtp_queue_t
 }
 
 #include <sys/mulbuf_test.h>
-#define NQUEUE	3
-mulbuf_thdpool_t *pool;
-mbtp_queue_t *queues[NQUEUE] = {NULL};
+
+typedef struct mulbuf_sha256_suite{
+	mulbuf_thdpool_t *pool;
+	mbtp_queue_t **queues_array;
+	int queue_count;
+}mulbuf_sha256_suite_t;
+
+mulbuf_sha256_suite_t suite;
 
 int mulbuf_queue_sha256_init(void)
 {
-	int rc = 0;
+	int threadcnt = 10;
+	int max_threadcnt = 20;
+	char namep[] = "sha256mb-pool";
+	char nameq[] = "sha256mb-queue";
+	int rc, i;
+
+	mulbuf_thdpool_t *pool;
+	int nqueue = 5;
+	mbtp_queue_t **queue_array;
+
+	queue_array = kmem_alloc(sizeof(mbtp_queue_t *) * nqueue, KM_PUSHPAGE);
+
+	printk(KERN_ERR "spl: pool_queue_init_fini_test");
+	printk(KERN_ERR "sha256-pool create");
+	rc = mulbuf_thdpool_create(&pool, namep, threadcnt, max_threadcnt);
+
+	for (i = 0; i < nqueue; i++) {
+		mbtp_queue_create(&queue_array[i], nameq, pool,
+				2, 10, mulbuf_sha256_fn);
+		printk(KERN_ERR "sha256-queue %d %p create", i, queue_array[i]);
+	}
+
+
+	for (i = 0; i < nqueue; i++) {
+		printk(KERN_ERR "sha256-queue %d %p destroy", i, queue_array[i]);
+		mbtp_queue_destroy(queue_array[i]);
+	}
+
+
+	kmem_free(queue_array, sizeof(mbtp_queue_t *) * nqueue);
+
+	printk(KERN_ERR "sha256-pool destroy");
+	mulbuf_thdpool_destroy(pool);
+
+	printk(KERN_ERR "spl: pool_queue_init_fini_test passed");
 
 	return rc;
 }
@@ -490,10 +538,13 @@ void mulbuf_queue_sha256_fini(void)
 {
 
 
+	if(1){
 	pool_init_fini_test();
 	pool_queue_init_fini_test();
 	one_task_test();
 
+	tasks_perf();
 	tasks_test();
+	}
 }
 
