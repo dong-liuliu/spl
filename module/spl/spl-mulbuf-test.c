@@ -406,11 +406,15 @@ int thread_task(void *arg)
 	int size = (int)arg;
 
 	while(!kthread_should_stop()){
-		msg = kmem_alloc(sizeof(size), KM_SLEEP);
+		msg = kmem_alloc(size, KM_SLEEP);
+		if(!msg){
+			printk(KERN_ERR "thread test mem allocation error");
+		}else {
+			//printk(KERN_ERR "msg %p, size %d ", msg, size);
+			mulbuf_sha256(msg, size, digests);
 
-		mulbuf_sha256(msg, size, digests);
-
-		kmem_free(msg, sizeof(size));
+			kmem_free(msg, sizeof(size));
+		}
 	}
 
 	return 0;
@@ -440,7 +444,7 @@ void threads_task_test()
 		wake_up_process(threads[i]);
 	}
 
-	msleep(1000 * 10);
+	msleep(1000);
 
 	printk(KERN_ERR "sha256-pool threads stop");
 	for (i = 0; i < Nthread; i++){

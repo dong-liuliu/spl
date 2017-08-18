@@ -86,6 +86,7 @@ static int mbtp_thread_create(mbtp_thread_t **tpt_r, mulbuf_thdpool_t *pool)
 
 	tpt = kmem_alloc(sizeof(*tpt), KM_PUSHPAGE | KM_ZERO);
 	*tpt_r = tpt;
+
 	if(!tpt)
 		return 1;
 
@@ -105,6 +106,7 @@ static int mbtp_thread_create(mbtp_thread_t **tpt_r, mulbuf_thdpool_t *pool)
 		*tpt_r = NULL;
 		return 1;
 	}
+
 
 	wake_up_process(tpt->tp_thread);
 
@@ -241,7 +243,6 @@ int mulbuf_thdpool_get_thread(mulbuf_thdpool_t *pool, mbtp_thread_t **tpt_r)
 	unsigned long flags;
 
 	spin_lock_irqsave(&pool->pool_lock, flags);
-
 	/* check whether need to add a thread */
 	if (pool->idle_threadcnt == 0) {
 
@@ -267,10 +268,14 @@ int mulbuf_thdpool_get_thread(mulbuf_thdpool_t *pool, mbtp_thread_t **tpt_r)
 				spin_unlock_irqrestore(&tpt->thd_lock, flags);
 
 				spin_lock_irqsave(&pool->pool_lock, flags);
+
 				list_add_tail(&tpt->pool_entry, &pool->plthread_idle_list);
 				pool->idle_threadcnt++;
 				pool->curr_threadcnt++;
+				spin_unlock_irqrestore(&pool->pool_lock, flags);
 			}
+
+			spin_lock_irqsave(&pool->pool_lock, flags);
 		}
 	}
 

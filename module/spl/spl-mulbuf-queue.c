@@ -69,7 +69,6 @@ void mbtp_queue_destroy(mbtp_queue_t *queue)
 	spin_lock_irqsave(&queue->queue_lock, flags);
 	queue->leave = 1;
 
-
 	dprintk("sha256-queue %p starts to destroy\n", queue);
 	/* cancel unassigned taskjobs */
 	while (!list_empty(&queue->task_list)) {
@@ -90,6 +89,7 @@ void mbtp_queue_destroy(mbtp_queue_t *queue)
 
 	/* wake waiting threads to leave */
 	wake_up_all(&queue->queue_waitq);
+
 	spin_unlock_irqrestore(&queue->queue_lock, flags);
 
 
@@ -179,13 +179,11 @@ int mbtp_queue_add_thread(mbtp_queue_t *queue)
 	if (!mulbuf_thdpool_get_thread(queue->pool, &new_tpt)) {
 		list_add_tail(&new_tpt->queue_entry, &queue->plthread_list);
 		new_tpt->queue = queue;
+
 		mbtp_thread_run_fn(new_tpt, queue->thread_fn, (void *)new_tpt);
-		queue->curr_threadcnt++;
-		queue->idle_threadcnt++;
 
 		return 0;
 	}
-
 	return 1;
 }
 

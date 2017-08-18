@@ -8,12 +8,12 @@
  */
 #define MULBUF_NQUEUE	7
 
-int spl_mulbuf_queues_max_threadcnt = 4;
+int spl_mulbuf_queues_max_threadcnt = -50;
 module_param(spl_mulbuf_queues_max_threadcnt, int, 0644);
 MODULE_PARM_DESC(spl_mulbuf_queues_max_threadcnt,
 		"Maximum number of threads in each queue. (minus means percentage)");
 
-int spl_mulbuf_queues_min_threadcnt = 1;
+int spl_mulbuf_queues_min_threadcnt = -25;
 module_param(spl_mulbuf_queues_min_threadcnt, int, 0644);
 MODULE_PARM_DESC(spl_mulbuf_queues_min_threadcnt,
 		"Maximum number of threads in each queue. (minus means percentage)");
@@ -86,9 +86,6 @@ int mulbuf_suite_sha256_init(void)
 	if (rc > 0)
 		rc = 1;
 
-#include <sys/mulbuf_test.h>
-
-		threads_task_test();
 	return rc;
 }
 
@@ -106,6 +103,9 @@ void mulbuf_suite_sha256_fini(void)
 
 
 
+#include <sys/mulbuf_test.h>
+
+		threads_task_test();
 
 
 	for (i = 0; i < nqueue; i++) {

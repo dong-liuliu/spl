@@ -291,6 +291,7 @@ unsigned long sha256_mb_snoop_proc(mbtp_thread_t *tqt, sha256_aux_t *aux, int th
 	int take_num, complete_num, process_num;
 	int i;
 	int snoop = 0;
+	int rc;
 
 	/* get tasks from queue's job list*/
 	process_num = complete_num = 0;
@@ -315,8 +316,17 @@ unsigned long sha256_mb_snoop_proc(mbtp_thread_t *tqt, sha256_aux_t *aux, int th
 			/* all threads are working, snoop until this thread is full of jobs */
 				snoop = 0;
 			}else{
-			/* no snoop if this thread is full and can add an extra thread into queue */
-				mbtp_queue_add_thread(queue);
+				/* release lock before add thread */
+				spin_unlock_irqrestore(&queue->queue_lock, flags);
+				/* no snoop if this thread is full and can add an extra thread into queue */
+				rc = mbtp_queue_add_thread(queue);
+
+				spin_lock_irqsave(&queue->queue_lock, flags);
+				if (rc == 0) {
+					queue->curr_threadcnt++;
+					queue->idle_threadcnt++;
+				}
+
 				/* check whether need to signal next thread */
 				if(queue->curr_taskcnt > 0 && queue->idle_threadcnt > 0)
 					wake_up(&queue->queue_waitq);
@@ -340,6 +350,7 @@ unsigned long sha256_mb_snoop_proc(mbtp_thread_t *tqt, sha256_aux_t *aux, int th
 		process_num = take_num + process_num - complete_num;
 
 		spin_lock_irqsave(&queue->queue_lock, flags);
+
 		queue->idle_threadcnt++;
 		queue->proc_taskcnt -= complete_num;
 
@@ -383,6 +394,7 @@ void mulbuf_sha256_fn(void *arg)
 
 	dprintk("sha256-tpt %p is trying lock queue\n", tpt);
 	spin_lock_irqsave(&queue->queue_lock, flags);
+
 	while(state != HASH_EXIT){
 
 		dprintk("sha256-queue tpt %p is in hash state %d\n", tpt, state);
@@ -406,6 +418,7 @@ void mulbuf_sha256_fn(void *arg)
 
 			/* wait for task coming or exit notice*/
 			add_wait_queue_exclusive(&queue->queue_waitq, &thd_wait);
+
 			spin_unlock_irqrestore(&queue->queue_lock, flags);
 			set_current_state(TASK_INTERRUPTIBLE);
 
@@ -413,6 +426,7 @@ void mulbuf_sha256_fn(void *arg)
 
 			__set_current_state(TASK_RUNNING);
 			spin_lock_irqsave(&queue->queue_lock, flags);
+
 			remove_wait_queue(&queue->queue_waitq, &thd_wait);
 
 			if(queue->curr_taskcnt == 0){
@@ -420,10 +434,12 @@ void mulbuf_sha256_fn(void *arg)
 			}else{
 				state = HASH_PROCESS;
 			}
+
 			break;
 		case HASH_PROCESS:
 		/* get tasks from queue's job list*/
 			flags = sha256_mb_snoop_proc(tpt, aux, spl_mulbuf_snoop_size_threshold, flags);
+
 			state = HASH_WAIT;
 			break;
 
@@ -435,6 +451,7 @@ void mulbuf_sha256_fn(void *arg)
 
 	if(queue->leave){
 	/* queue is leaving, queue will detach them */
+
 		spin_unlock_irqrestore(&queue->queue_lock, flags);
 
 		/* let queue know, this thread is left now */
@@ -447,6 +464,7 @@ void mulbuf_sha256_fn(void *arg)
 		/* after shrink, this thread has no relationship with queue, its owner becomes pool */
 		tpt->next_state = THREAD_READY;
 		mbtp_queue_shrink_thread(queue, tpt);
+
 		spin_unlock_irqrestore(&queue->queue_lock, flags);
 	}
 
