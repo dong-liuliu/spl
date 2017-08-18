@@ -162,14 +162,15 @@ void inform_fini(inform_t *ifm)
 void sha256_multi_task_cb(mbtp_task_t *tj, void *arg)
 {
 	inform_t *ifm = (inform_t*) arg;
+	unsigned long flags;
 
-	spin_lock(&ifm->lock);
+	spin_lock_irqsave(&ifm->lock, flags);
 	ifm->count++;
 	if(ifm->count >= ifm->threshold && !(ifm->count % ifm->threshold)) {
 		printk(KERN_ERR "this is count %d\n", ifm->count);
 		complete(&ifm->cmpt);
 	}
-	spin_unlock(&ifm->lock);
+	spin_unlock_irqrestore(&ifm->lock, flags);
 }
 
 void zfs_SHA256(const void *buf, uint64_t size, unsigned char *digest);

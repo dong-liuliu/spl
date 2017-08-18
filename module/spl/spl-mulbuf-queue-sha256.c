@@ -250,14 +250,14 @@ int sha256_mb_auxiliary_init(sha256_aux_t **aux_r)
 	SHA256_HASH_CTX_MGR *mgr;
 	int i;
 
-	aux = (sha256_aux_t *)kmem_alloc(sizeof(*aux), KM_SLEEP | KM_ZERO);
+	aux = (sha256_aux_t *)kmem_alloc(sizeof(*aux), KM_PUSHPAGE | KM_ZERO);
 	*aux_r = aux;
 	if(aux == NULL)
 		return 1;
 
 	// TODO memalign allocation
 	//posix_memalign((void *)&mgr, 16, sizeof(SHA256_HASH_CTX_MGR));
-	mgr =( SHA256_HASH_CTX_MGR *)kmem_alloc(sizeof(*mgr), KM_SLEEP | KM_ZERO);
+	mgr =( SHA256_HASH_CTX_MGR *)kmem_alloc(sizeof(*mgr), KM_PUSHPAGE | KM_ZERO);
 	aux->mgr = mgr;
 	sha256_ctx_mgr_init(mgr);
 
@@ -278,7 +278,7 @@ void sha256_mb_auxiliary_fini(sha256_aux_t *aux)
 }
 
 
-int sha256_mb_snoop_proc(mbtp_thread_t *tqt, sha256_aux_t *aux, int thd)
+unsigned long sha256_mb_snoop_proc(mbtp_thread_t *tqt, sha256_aux_t *aux, int thd, unsigned long flags)
 {
 	mbtp_queue_t *queue = tqt->queue;
 	mbtp_task_t *jobs[32];
@@ -330,7 +330,7 @@ int sha256_mb_snoop_proc(mbtp_thread_t *tqt, sha256_aux_t *aux, int thd)
 			snoop = 0;
 		}
 
-		spin_unlock(&queue->queue_lock);
+		spin_unlock_irqrestore(&queue->queue_lock, flags);
 		if (snoop){
 			sha256_mb_length_thd(mgr, ctxpool, jobs, take_num, concurrent_num, thd);
 		}else{
@@ -339,7 +339,7 @@ int sha256_mb_snoop_proc(mbtp_thread_t *tqt, sha256_aux_t *aux, int thd)
 		complete_num = sha256_mb_count_complete(ctxpool, concurrent_num);
 		process_num = take_num + process_num - complete_num;
 
-		spin_lock(&queue->queue_lock);
+		spin_lock_irqsave(&queue->queue_lock, flags);
 		queue->idle_threadcnt++;
 		queue->proc_taskcnt -= complete_num;
 
@@ -350,7 +350,7 @@ int sha256_mb_snoop_proc(mbtp_thread_t *tqt, sha256_aux_t *aux, int thd)
 		}
 	}
 
-	return 0;
+	return flags;
 }
 
 
@@ -370,6 +370,8 @@ void mulbuf_sha256_fn(void *arg)
 	mbtp_thread_t *tpt = (mbtp_thread_t *)arg;
 	mbtp_queue_t *queue = tpt->queue;
 
+	unsigned long flags;
+
 	int concurrent_num;
 
 	sha256_aux_t *aux;
@@ -380,7 +382,7 @@ void mulbuf_sha256_fn(void *arg)
 	state = HASH_WAIT;
 
 	dprintk("sha256-tpt %p is trying lock queue\n", tpt);
-	spin_lock(&queue->queue_lock);
+	spin_lock_irqsave(&queue->queue_lock, flags);
 	while(state != HASH_EXIT){
 
 		dprintk("sha256-queue tpt %p is in hash state %d\n", tpt, state);
@@ -404,13 +406,13 @@ void mulbuf_sha256_fn(void *arg)
 
 			/* wait for task coming or exit notice*/
 			add_wait_queue_exclusive(&queue->queue_waitq, &thd_wait);
-			spin_unlock(&queue->queue_lock);
+			spin_unlock_irqrestore(&queue->queue_lock, flags);
 			set_current_state(TASK_INTERRUPTIBLE);
 
 			schedule();
 
 			__set_current_state(TASK_RUNNING);
-			spin_lock(&queue->queue_lock);
+			spin_lock_irqsave(&queue->queue_lock, flags);
 			remove_wait_queue(&queue->queue_waitq, &thd_wait);
 
 			if(queue->curr_taskcnt == 0){
@@ -421,7 +423,7 @@ void mulbuf_sha256_fn(void *arg)
 			break;
 		case HASH_PROCESS:
 		/* get tasks from queue's job list*/
-			sha256_mb_snoop_proc(tpt, aux, spl_mulbuf_snoop_size_threshold);
+			flags = sha256_mb_snoop_proc(tpt, aux, spl_mulbuf_snoop_size_threshold, flags);
 			state = HASH_WAIT;
 			break;
 
@@ -433,19 +435,19 @@ void mulbuf_sha256_fn(void *arg)
 
 	if(queue->leave){
 	/* queue is leaving, queue will detach them */
-		spin_unlock(&queue->queue_lock);
+		spin_unlock_irqrestore(&queue->queue_lock, flags);
 
 		/* let queue know, this thread is left now */
-		spin_lock(&tpt->thd_lock);
+		spin_lock_irqsave(&tpt->thd_lock, flags);
 		tpt->next_state = THREAD_READY;
 		wake_up(&tpt->thread_waitq);
-		spin_unlock(&tpt->thd_lock);
+		spin_unlock_irqrestore(&tpt->thd_lock, flags);
 	}else{
 	/* queue is not leaving, thread detaches itself from queue */
 		/* after shrink, this thread has no relationship with queue, its owner becomes pool */
 		tpt->next_state = THREAD_READY;
 		mbtp_queue_shrink_thread(queue, tpt);
-		spin_unlock(&queue->queue_lock);
+		spin_unlock_irqrestore(&queue->queue_lock, flags);
 	}
 
 	sha256_mb_auxiliary_fini(aux);

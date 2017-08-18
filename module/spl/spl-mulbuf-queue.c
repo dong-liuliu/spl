@@ -66,7 +66,7 @@ void mbtp_queue_destroy(mbtp_queue_t *queue)
 
 
 	dprintk("sha256-queue %p is trying to lock queue\n", queue);
-	spin_lock(&queue->queue_lock);
+	spin_lock_irqsave(&queue->queue_lock, flags);
 	queue->leave = 1;
 
 
@@ -90,7 +90,7 @@ void mbtp_queue_destroy(mbtp_queue_t *queue)
 
 	/* wake waiting threads to leave */
 	wake_up_all(&queue->queue_waitq);
-	spin_unlock(&queue->queue_lock);
+	spin_unlock_irqrestore(&queue->queue_lock, flags);
 
 
 	/** detach threads from queue
@@ -105,23 +105,23 @@ void mbtp_queue_destroy(mbtp_queue_t *queue)
 		dprintk("sha256-queue %p destroy thd %p", queue, tpt);
 
 
-		spin_lock(&tpt->thd_lock);
+		spin_lock_irqsave(&tpt->thd_lock, flags);
 		dprintk("sha256-queue thd %p in state %d", tpt, tpt->next_state);
 
 		/* thread may be going ready or running */
 		if (tpt->next_state != THREAD_READY) {
 			add_wait_queue_exclusive(&tpt->thread_waitq, &queue_wait);
-			spin_unlock(&tpt->thd_lock);
+			spin_unlock_irqrestore(&tpt->thd_lock, flags);
 			set_current_state(TASK_INTERRUPTIBLE);
 
 			schedule();
 
 			__set_current_state(TASK_RUNNING);
-			spin_lock(&tpt->thd_lock);
+			spin_lock_irqsave(&tpt->thd_lock, flags);
 			remove_wait_queue(&tpt->thread_waitq, &queue_wait);
 		}
 
-		spin_unlock(&tpt->thd_lock);
+		spin_unlock_irqrestore(&tpt->thd_lock, flags);
 		mbtp_queue_shrink_thread(queue, tpt);
 	}
 
@@ -273,7 +273,7 @@ void mbtp_queue_submit_job(mbtp_task_t *mb_task, mbtp_queue_t *queue)
 {
 	unsigned long flags;
 
-	spin_lock(&queue->queue_lock);
+	spin_lock_irqsave(&queue->queue_lock, flags);
 
 	queue->curr_taskcnt++;
 	queue->total_taskcnt++;
@@ -283,7 +283,7 @@ void mbtp_queue_submit_job(mbtp_task_t *mb_task, mbtp_queue_t *queue)
 	if (queue->curr_taskcnt == 1)
 		wake_up(&queue->queue_waitq);
 
-	spin_unlock(&queue->queue_lock);
+	spin_unlock_irqrestore(&queue->queue_lock, flags);
 
 	return;
 }

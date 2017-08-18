@@ -20,7 +20,7 @@ static int mbtp_thread_routine(void *args)
 	sigprocmask(SIG_BLOCK, &blocked, NULL);
 	flush_signals(current);
 
-	spin_lock(&tpt->thd_lock);
+	spin_lock_irqsave(&tpt->thd_lock, flags);
 	tpt->next_state = THREAD_SETUP;
 
 	while(!kthread_should_stop()){
@@ -39,14 +39,14 @@ static int mbtp_thread_routine(void *args)
 		case THREAD_READY:
 			/* tqt->next_state is determined by queue or pool during wait */
 			add_wait_queue_exclusive(&tpt->thread_waitq, &wait);
-			spin_unlock(&tpt->thd_lock);
+			spin_unlock_irqrestore(&tpt->thd_lock, flags);
 
 			set_current_state(TASK_INTERRUPTIBLE);
 
 			schedule();
 
 			__set_current_state(TASK_RUNNING);
-			spin_lock(&tpt->thd_lock);
+			spin_lock_irqsave(&tpt->thd_lock, flags);
 			remove_wait_queue(&tpt->thread_waitq, &wait);
 
 			break;
@@ -54,18 +54,18 @@ static int mbtp_thread_routine(void *args)
 		case THREAD_RUNNING:
 			/* hash mb will change it after its end */
 			tpt->next_state = THREAD_RUNNING;
-			spin_unlock(&tpt->thd_lock);
+			spin_unlock_irqrestore(&tpt->thd_lock, flags);
 
 			tpt->fn(tpt->arg);
 
-			spin_lock(&tpt->thd_lock);
+			spin_lock_irqsave(&tpt->thd_lock, flags);
 			break;
 
 		case THREAD_EXIT:
 		default:
 			/* Exit notice to destroy function */
 			wake_up(&tpt->thread_waitq);
-			spin_unlock(&tpt->thd_lock);
+			spin_unlock_irqrestore(&tpt->thd_lock, flags);
 
 			return 0;
 		}
@@ -74,7 +74,7 @@ static int mbtp_thread_routine(void *args)
 	/* Exit notice to destroy function */
 	tpt->curr_state = THREAD_EXIT;
 	wake_up(&tpt->thread_waitq);
-	spin_unlock(&tpt->thd_lock);
+	spin_unlock_irqrestore(&tpt->thd_lock, flags);
 
 	return 0;
 
@@ -117,19 +117,19 @@ static void mbtp_thread_destroy(mbtp_thread_t *tpt)
 	unsigned long flags;
 
 	/* wait for thread's exit */
-	spin_lock(&tpt->thd_lock);
+	spin_lock_irqsave(&tpt->thd_lock, flags);
 	if (tpt->curr_state != THREAD_EXIT) {
 		add_wait_queue_exclusive(&tpt->thread_waitq, &wait);
-		spin_unlock(&tpt->thd_lock);
+		spin_unlock_irqrestore(&tpt->thd_lock, flags);
 		set_current_state(TASK_INTERRUPTIBLE);
 
 		schedule();
 
 		__set_current_state(TASK_RUNNING);
-		spin_lock(&tpt->thd_lock);
+		spin_lock_irqsave(&tpt->thd_lock, flags);
 		remove_wait_queue(&tpt->thread_waitq, &wait);
 	}
-	spin_unlock(&tpt->thd_lock);
+	spin_unlock_irqrestore(&tpt->thd_lock, flags);
 
 	kmem_free(tpt, sizeof(*tpt));
 
@@ -167,19 +167,19 @@ int mulbuf_thdpool_create(mulbuf_thdpool_t **pool_r, const char *name, int threa
 			continue; /* if failed, continue to generate next one */
 
 		/* wait for thread's ready */
-		spin_lock(&tpt->thd_lock);
+		spin_lock_irqsave(&tpt->thd_lock, flags);
 		if (tpt->curr_state == THREAD_SETUP) {
 			add_wait_queue_exclusive(&tpt->thread_waitq, &pool_wait);
-			spin_unlock(&tpt->thd_lock);
+			spin_unlock_irqrestore(&tpt->thd_lock, flags);
 			set_current_state(TASK_INTERRUPTIBLE);
 
 			schedule();
 
 			__set_current_state(TASK_RUNNING);
-			spin_lock(&tpt->thd_lock);
+			spin_lock_irqsave(&tpt->thd_lock, flags);
 			remove_wait_queue(&tpt->thread_waitq, &pool_wait);
 		}
-		spin_unlock(&tpt->thd_lock);
+		spin_unlock_irqrestore(&tpt->thd_lock, flags);
 
 		dprintk("sha256-pool tpt %p ", tpt);
 
@@ -212,12 +212,12 @@ void mulbuf_thdpool_destroy(mulbuf_thdpool_t *pool)
 		tpt = list_entry(pool->plthread_idle_list.next, mbtp_thread_t, pool_entry);
 		list_del(&tpt->pool_entry);
 		/* check and wait whether this tqt is left */
-		spin_lock(&tpt->thd_lock);
+		spin_lock_irqsave(&tpt->thd_lock, flags);
 		if(tpt->next_state != THREAD_EXIT){
 			tpt->next_state = THREAD_EXIT;
 			wake_up(&tpt->thread_waitq);
 		}
-		spin_unlock(&tpt->thd_lock);
+		spin_unlock_irqrestore(&tpt->thd_lock, flags);
 
 		mbtp_thread_destroy(tpt);
 		pool->curr_threadcnt--;
@@ -240,33 +240,33 @@ int mulbuf_thdpool_get_thread(mulbuf_thdpool_t *pool, mbtp_thread_t **tpt_r)
 	mbtp_thread_t *tpt;
 	unsigned long flags;
 
-	spin_lock(&pool->pool_lock);
+	spin_lock_irqsave(&pool->pool_lock, flags);
 
 	/* check whether need to add a thread */
 	if (pool->idle_threadcnt == 0) {
 
 		/* there is no idle thread */
 		if (pool->curr_threadcnt < pool->max_threadcnt) {
-			spin_unlock(&pool->pool_lock);
+			spin_unlock_irqrestore(&pool->pool_lock, flags);
 
 			/* create one new thread */
 			if (!mbtp_thread_create(&tpt, pool)) {
 				/* wait for thread's ready */
-				spin_lock(&tpt->thd_lock);
+				spin_lock_irqsave(&tpt->thd_lock, flags);
 				if (tpt->curr_state == THREAD_SETUP) {
 					add_wait_queue_exclusive(&tpt->thread_waitq, &pool_wait);
-					spin_unlock(&tpt->thd_lock);
+					spin_unlock_irqrestore(&tpt->thd_lock, flags);
 					set_current_state(TASK_INTERRUPTIBLE);
 
 					schedule();
 
 					__set_current_state(TASK_RUNNING);
-					spin_lock(&tpt->thd_lock);
+					spin_lock_irqsave(&tpt->thd_lock, flags);
 					remove_wait_queue(&tpt->thread_waitq, &pool_wait);
 				}
-				spin_unlock(&tpt->thd_lock);
+				spin_unlock_irqrestore(&tpt->thd_lock, flags);
 
-				spin_lock(&pool->pool_lock);
+				spin_lock_irqsave(&pool->pool_lock, flags);
 				list_add_tail(&tpt->pool_entry, &pool->plthread_idle_list);
 				pool->idle_threadcnt++;
 				pool->curr_threadcnt++;
@@ -281,13 +281,13 @@ int mulbuf_thdpool_get_thread(mulbuf_thdpool_t *pool, mbtp_thread_t **tpt_r)
 		tpt = list_entry(pool->plthread_idle_list.next, mbtp_thread_t, pool_entry);
 		list_del(&tpt->pool_entry);
 		list_add_tail(&tpt->pool_entry, &pool->plthread_busy_list);
-		spin_unlock(&pool->pool_lock);
+		spin_unlock_irqrestore(&pool->pool_lock, flags);
 
 		*tpt_r = tpt;
 		return 0;
 	} else {
 	/* there no idle thread */
-		spin_unlock(&pool->pool_lock);
+		spin_unlock_irqrestore(&pool->pool_lock, flags);
 
 		*tpt_r = NULL;
 		return 1;
@@ -301,11 +301,11 @@ void mulbuf_thdpool_put_thread(mbtp_thread_t *tpt)
 	mulbuf_thdpool_t *pool = tpt->pool;
 	unsigned long flags;
 
-	spin_lock(&pool->pool_lock);
+	spin_lock_irqsave(&pool->pool_lock, flags);
 	pool->idle_threadcnt++;
 	list_del(&tpt->pool_entry);
 	list_add_tail(&tpt->pool_entry, &pool->plthread_idle_list);
-	spin_unlock(&pool->pool_lock);
+	spin_unlock_irqrestore(&pool->pool_lock, flags);
 
 	return;
 }
@@ -315,7 +315,7 @@ void mbtp_thread_run_fn(mbtp_thread_t *tpt, threadp_func_t fn, void *arg)
 {
 	unsigned long flags;
 
-	spin_lock(&tpt->thd_lock);
+	spin_lock_irqsave(&tpt->thd_lock, flags);
 
 	tpt->fn = fn;
 	tpt->arg = arg;
@@ -323,7 +323,7 @@ void mbtp_thread_run_fn(mbtp_thread_t *tpt, threadp_func_t fn, void *arg)
 	/* trigger tgt to run fn */
 	wake_up(&tpt->thread_waitq);
 
-	spin_unlock(&tpt->thd_lock);
+	spin_unlock_irqrestore(&tpt->thd_lock, flags);
 
 	return;
 }
