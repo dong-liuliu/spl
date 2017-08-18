@@ -7,3 +7,5 @@ void one_task_test(void);
 
 void tasks_test(void);
 void tasks_perf(void);
+
+void threads_task_test(void);

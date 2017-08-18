@@ -1,7 +1,6 @@
 
 
 #include <sys/mulbuf_queue_sha256.h>
-
 /*
  * Different queues for different hash length
  * For ZFS sha256, 7 is a proper queue number for length: 16KB and below, 32KB
@@ -9,12 +8,12 @@
  */
 #define MULBUF_NQUEUE	7
 
-int spl_mulbuf_queues_max_threadcnt = -50;
+int spl_mulbuf_queues_max_threadcnt = 4;
 module_param(spl_mulbuf_queues_max_threadcnt, int, 0644);
 MODULE_PARM_DESC(spl_mulbuf_queues_max_threadcnt,
 		"Maximum number of threads in each queue. (minus means percentage)");
 
-int spl_mulbuf_queues_min_threadcnt = 2;
+int spl_mulbuf_queues_min_threadcnt = 1;
 module_param(spl_mulbuf_queues_min_threadcnt, int, 0644);
 MODULE_PARM_DESC(spl_mulbuf_queues_min_threadcnt,
 		"Maximum number of threads in each queue. (minus means percentage)");
@@ -87,6 +86,9 @@ int mulbuf_suite_sha256_init(void)
 	if (rc > 0)
 		rc = 1;
 
+#include <sys/mulbuf_test.h>
+
+		threads_task_test();
 	return rc;
 }
 
@@ -103,6 +105,9 @@ void mulbuf_suite_sha256_fini(void)
 	queue_array = suite.queues_array;
 
 
+
+
+
 	for (i = 0; i < nqueue; i++) {
 		printk(KERN_ERR "sha256-queue %d %p destroy", i, queue_array[i]);
 		if (queue_array[i])
@@ -117,9 +122,6 @@ void mulbuf_suite_sha256_fini(void)
 		mulbuf_thdpool_destroy(pool);
 
 	printk(KERN_ERR "spl: pool_queue_init_fini_test passed");
-
-#include <sys/mulbuf_test.h>
-	one_task_test();
 
 	return;
 }

@@ -3,6 +3,8 @@
 #include <linux/mutex.h>
 #include <linux/vmalloc.h>
 #include <sys/kmem.h>
+#include <unistd.h>
+#include <linux/delay.h>
 
 #include <sys/mulbuf_test.h>
 
@@ -397,6 +399,56 @@ void tasks_test(void)
 	return;
 }
 
+int thread_task(void *arg)
+{
+	unsigned char digests[32];
+	unsigned char *msg;
+	int size = (int)arg;
+
+	while(!kthread_should_stop()){
+		msg = kmem_alloc(sizeof(size), KM_SLEEP);
+
+		mulbuf_sha256(msg, size, digests);
+
+		kmem_free(msg, sizeof(size));
+	}
+
+	return 0;
+}
+#define Nthread	40
+void threads_task_test()
+{
+
+	struct task_struct	*threads[Nthread];
+
+	int size = 128 * 1024;
+	int i;
+
+
+	printk(KERN_ERR "sha256-pool threads_task_test");
+
+
+	printk(KERN_ERR "sha256-pool threads create");
+	for (i = 0; i < Nthread; i++){
+		threads[i] = spl_kthread_create(thread_task, size,
+		    "%s", "mulbuf-test-thread");
+	}
+
+
+	printk(KERN_ERR "sha256-pool threads wakeup");
+	for (i = 0; i < Nthread; i++){
+		wake_up_process(threads[i]);
+	}
+
+	msleep(1000 * 10);
+
+	printk(KERN_ERR "sha256-pool threads stop");
+	for (i = 0; i < Nthread; i++){
+
+		kthread_stop(threads[i]);
+	}
+
+}
 
 void tases_perf(testcase_t *tcase)
 {
