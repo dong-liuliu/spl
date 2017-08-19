@@ -406,14 +406,14 @@ int thread_task(void *arg)
 	int size = (int)arg;
 
 	while(!kthread_should_stop()){
-		msg = kmem_alloc(size, KM_SLEEP);
+		msg = vmalloc(size);
 		if(!msg){
 			printk(KERN_ERR "thread test mem allocation error");
 		}else {
 			//printk(KERN_ERR "msg %p, size %d ", msg, size);
 			mulbuf_sha256(msg, size, digests);
 
-			kmem_free(msg, sizeof(size));
+			vfree(msg);
 		}
 	}
 

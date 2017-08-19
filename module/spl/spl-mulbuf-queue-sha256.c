@@ -8,12 +8,12 @@
 
 #define STACK_ALIGNCALL16(x)  \
 { \
-    asm("push %rbx"); \
-    asm("mov %rsp, %rbx"); \
+    asm("push %rdi"); \
+    asm("mov %rsp, %rdi"); \
     asm("and $0xfffffffffffffff0, %rsp"); \
-    asm("push %rbx"); \
+    asm("push %rdi"); \
     asm("sub $8, %rsp"); \
-    asm("mov (%rbx), %rbx"); \
+    asm("mov (%rdi), %rdi"); \
     x; \
     asm("add $8, %rsp"); \
     asm("pop %rsp"); \
@@ -293,6 +293,11 @@ unsigned long sha256_mb_snoop_proc(mbtp_thread_t *tqt, sha256_aux_t *aux, int th
 	int snoop = 0;
 	int rc;
 
+	if (queue->idle_threadcnt <= 0) {
+		printk(KERN_ERR "idles thread is should at least one, queue is %p ", queue);
+		*(int *)0 = 010101010101;
+	}
+	ASSERT(queue->idle_threadcnt > 0);
 	/* get tasks from queue's job list*/
 	process_num = complete_num = 0;
 	while((take_num = mbtp_queue_assign_taskjobcnt(queue, process_num, concurrent_num)) || process_num) {
@@ -300,11 +305,18 @@ unsigned long sha256_mb_snoop_proc(mbtp_thread_t *tqt, sha256_aux_t *aux, int th
 		queue->proc_taskcnt += take_num;
 		queue->idle_threadcnt--;
 		// take tasks out
-		for (i = 0; i < take_num; i++) {
+		for (i = 0; i < take_num && !list_empty(&queue->task_list); i++) {
 			job = list_entry(queue->task_list.next, mbtp_task_t, queue_entry);
 			list_del(&job->queue_entry);
 			jobs[i] = job;
 		}
+
+		if(i != take_num){
+			printk(KERN_ERR "takenum is more than list have, i is %d, takenum is %d ", i, take_num);
+			printk(KERN_ERR "idlethd is %d+1, cyrr_jbcnt is %d+takenum, process_num is %d ",
+					queue->idle_threadcnt, queue->curr_taskcnt, process_num);
+		}
+		ASSERT(i == take_num);
 
 		/* start snoop loop */
 		if(queue->idle_threadcnt == 0){
@@ -313,7 +325,7 @@ unsigned long sha256_mb_snoop_proc(mbtp_thread_t *tqt, sha256_aux_t *aux, int th
 			/* snoop if this thread is not full */
 				snoop = 1;
 			}else if(queue->max_threadcnt == queue->curr_threadcnt){
-			/* all threads are working, snoop until this thread is full of jobs */
+			/* all threads are working, not snoop since this thread is full of jobs */
 				snoop = 0;
 			}else{
 				/* release lock before add thread */
@@ -322,10 +334,6 @@ unsigned long sha256_mb_snoop_proc(mbtp_thread_t *tqt, sha256_aux_t *aux, int th
 				rc = mbtp_queue_add_thread(queue);
 
 				spin_lock_irqsave(&queue->queue_lock, flags);
-				if (rc == 0) {
-					queue->curr_threadcnt++;
-					queue->idle_threadcnt++;
-				}
 
 				/* check whether need to signal next thread */
 				if(queue->curr_taskcnt > 0 && queue->idle_threadcnt > 0)

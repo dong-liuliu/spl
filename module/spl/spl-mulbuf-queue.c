@@ -65,11 +65,11 @@ void mbtp_queue_destroy(mbtp_queue_t *queue)
 	struct list_head *l, *l_tmp;
 
 
-	dprintk("sha256-queue %p is trying to lock queue\n", queue);
+	printk( KERN_ERR "sha256-queue %p is trying to lock queue\n", queue);
 	spin_lock_irqsave(&queue->queue_lock, flags);
 	queue->leave = 1;
 
-	dprintk("sha256-queue %p starts to destroy\n", queue);
+	printk( KERN_ERR "sha256-queue %p starts to destroy\n", queue);
 	/* cancel unassigned taskjobs */
 	while (!list_empty(&queue->task_list)) {
 		tj = list_entry(queue->task_list.next, mbtp_task_t, queue_entry);
@@ -102,11 +102,11 @@ void mbtp_queue_destroy(mbtp_queue_t *queue)
 		/* check and wait whether this tqt is left */
 		tpt = list_entry(l, mbtp_thread_t, queue_entry);
 
-		dprintk("sha256-queue %p destroy thd %p", queue, tpt);
+		printk( KERN_ERR "sha256-queue %p destroy thd %p", queue, tpt);
 
 
 		spin_lock_irqsave(&tpt->thd_lock, flags);
-		dprintk("sha256-queue thd %p in state %d", tpt, tpt->next_state);
+		printk( KERN_ERR "sha256-queue thd %p in state %d", tpt, tpt->next_state);
 
 		/* thread may be going ready or running */
 		if (tpt->next_state != THREAD_READY) {
@@ -175,10 +175,16 @@ int mbtp_queue_assign_taskjobcnt(mbtp_queue_t *queue, int process_num, int concu
 int mbtp_queue_add_thread(mbtp_queue_t *queue)
 {
 	mbtp_thread_t *new_tpt;
+	int flags;
 
 	if (!mulbuf_thdpool_get_thread(queue->pool, &new_tpt)) {
+		/* add threadcnt before run thread */
+		spin_lock_irqsave(&queue->queue_lock, flags);
 		list_add_tail(&new_tpt->queue_entry, &queue->plthread_list);
 		new_tpt->queue = queue;
+		queue->curr_threadcnt++;
+		queue->idle_threadcnt++;
+		spin_unlock_irqrestore(&queue->queue_lock, flags);
 
 		mbtp_thread_run_fn(new_tpt, queue->thread_fn, (void *)new_tpt);
 
