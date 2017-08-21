@@ -1,6 +1,5 @@
 
-#define _KERNEL
-#if defined(__x86_64) && defined(_KERNEL) && defined(HAVE_HASH_MB)
+#if defined(__x86_64) && defined(__KERNEL__) && defined(HAVE_HASH_MB)
 
 #include <sys/mulbuf_queue_sha256.h>
 /*
@@ -186,4 +185,4 @@ int mulbuf_sha256(void *buffer, size_t size, unsigned char *digest)
 }
 EXPORT_SYMBOL(mulbuf_sha256);
 
-#endif /* _KERNEL && __x86_64 && HAVE_HASH_MB */
+#endif /* __KERNEL__ && __x86_64 && HAVE_HASH_MB */

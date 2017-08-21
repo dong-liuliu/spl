@@ -2,7 +2,7 @@
 #ifndef _SPL_MULBUF_THDPOOL_H
 #define	_SPL_MULBUF_THDPOOL_H
 
-#if defined(__x86_64) && defined(_KERNEL) && defined(HAVE_HASH_MB)
+#if defined(__x86_64) && defined(__KERNEL__) && defined(HAVE_HASH_MB)
 
 #include <linux/module.h>
 #include <linux/gfp.h>
@@ -84,6 +84,6 @@ void mbtp_thread_run_fn(mbtp_thread_t *tpt, threadp_func_t fn, void *arg);
 /* Return a valid thread to its pool */
 void mulbuf_thdpool_put_thread(mbtp_thread_t *tpt);
 
-#endif /* _KERNEL && __x86_64 && HAVE_HASH_MB */
+#endif /* __KERNEL__ && __x86_64 && HAVE_HASH_MB */
 
 #endif  /* _SPL_MULBUF_THDPOOL_H */

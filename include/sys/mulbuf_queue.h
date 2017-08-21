@@ -2,7 +2,7 @@
 #ifndef _SPL_MULBUF_QUEUE_H
 #define	_SPL_MULBUF_QUEUE_H
 
-#if defined(__x86_64) && defined(_KERNEL) && defined(HAVE_HASH_MB)
+#if defined(__x86_64) && defined(__KERNEL__) && defined(HAVE_HASH_MB)
 
 #include <linux/module.h>
 #include <linux/gfp.h>
@@ -68,6 +68,6 @@ int mbtp_queue_check_shrink_thread(mbtp_queue_t *queue, int concurrent_num);
 
 void mbtp_queue_submit_job(mbtp_task_t *mb_task, mbtp_queue_t *queue);
 
-#endif /* _KERNEL && __x86_64 && HAVE_HASH_MB */
+#endif /* __KERNEL__ && __x86_64 && HAVE_HASH_MB */
 
 #endif  /* _SPL_MULBUF_QUEUE_H */

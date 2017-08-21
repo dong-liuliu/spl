@@ -30,7 +30,7 @@
 #ifndef _MULTI_BUFFER_H_
 #define _MULTI_BUFFER_H_
 
-#if defined(__x86_64) && defined(_KERNEL) && defined(HAVE_HASH_MB)
+#if defined(__x86_64) && defined(__KERNEL__) && defined(HAVE_HASH_MB)
 
 /**
  *  @file  multi_buffer.h
@@ -113,6 +113,6 @@ typedef enum {
 }
 #endif
 
-#endif /* _KERNEL && __x86_64 && HAVE_HASH_MB */
+#endif /* __KERNEL__ && __x86_64 && HAVE_HASH_MB */
 
 #endif // _MULTI_BUFFER_H_

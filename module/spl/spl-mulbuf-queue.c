@@ -1,5 +1,5 @@
 
-#if defined(__x86_64) && defined(_KERNEL) && defined(HAVE_HASH_MB)
+#if defined(__x86_64) && defined(__KERNEL__) && defined(HAVE_HASH_MB)
 
 #include <linux/interrupt.h>
 #include <linux/kthread.h>
@@ -307,4 +307,4 @@ void mbtp_queue_submit_job(mbtp_task_t *mb_task, mbtp_queue_t *queue)
 	return;
 }
 
-#endif /* _KERNEL && __x86_64 && HAVE_HASH_MB */
+#endif /* __KERNEL__ && __x86_64 && HAVE_HASH_MB */
