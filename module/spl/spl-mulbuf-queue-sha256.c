@@ -321,7 +321,7 @@ unsigned long sha256_mb_snoop_proc(mbtp_thread_t *tqt, sha256_aux_t *aux, int th
 		/* start snoop loop */
 		if(queue->idle_threadcnt == 0){
 		/* Last idle thread should do snoop operations */
-			if(take_num < concurrent_num){
+			if(take_num + process_num < concurrent_num){
 			/* snoop if this thread is not full */
 				snoop = 1;
 			}else if(queue->max_threadcnt == queue->curr_threadcnt){
@@ -374,6 +374,12 @@ unsigned long sha256_mb_snoop_proc(mbtp_thread_t *tqt, sha256_aux_t *aux, int th
 		}
 	}
 
+	if(get_using_hash_ctx(ctxpool, 0, concurrent_num) != -1)
+		printk(KERN_ERR "snoop %d! ctxpool %p;current take_num %d; process_num %d; complete %d ",
+						snoop, ctxpool, take_num, process_num, complete_num);
+	//if(queue->proc_taskcnt = 1 && snoop == 1)
+	//		printk(KERN_ERR "snoop %d! ctxpool %p;current take_num %d; process_num %d; complete %d ",
+	//			snoop, ctxpool, take_num, process_num, complete_num);
 	return flags;
 }
 
