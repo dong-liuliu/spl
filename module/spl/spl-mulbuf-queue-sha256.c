@@ -330,8 +330,13 @@ unsigned long sha256_mb_snoop_proc(mbtp_thread_t *tqt, sha256_aux_t *aux, int th
 			}else{
 				/* release lock before add thread */
 				spin_unlock_irqrestore(&queue->queue_lock, flags);
+
+			//	printk(KERN_ERR "thd %p goes to add thread; processnum %d, takenum %d", tqt, process_num, take_num);
 				/* no snoop if this thread is full and can add an extra thread into queue */
 				rc = mbtp_queue_add_thread(queue);
+
+			//	printk(KERN_ERR "thd %p goes to add thread  done ", tqt);
+
 
 				spin_lock_irqsave(&queue->queue_lock, flags);
 
@@ -426,14 +431,14 @@ void mulbuf_sha256_fn(void *arg)
 
 			/* wait for task coming or exit notice*/
 			add_wait_queue_exclusive(&queue->queue_waitq, &thd_wait);
+			set_current_state(TASK_INTERRUPTIBLE);
 
 			spin_unlock_irqrestore(&queue->queue_lock, flags);
-			set_current_state(TASK_INTERRUPTIBLE);
 
 			schedule();
 
-			__set_current_state(TASK_RUNNING);
 			spin_lock_irqsave(&queue->queue_lock, flags);
+			__set_current_state(TASK_RUNNING);
 
 			remove_wait_queue(&queue->queue_waitq, &thd_wait);
 
@@ -470,9 +475,16 @@ void mulbuf_sha256_fn(void *arg)
 	}else{
 	/* queue is not leaving, thread detaches itself from queue */
 		/* after shrink, this thread has no relationship with queue, its owner becomes pool */
-		tpt->next_state = THREAD_READY;
-		mbtp_queue_shrink_thread(queue, tpt);
+		spin_unlock_irqrestore(&queue->queue_lock, flags);
 
+		/* let queue know, this thread is left now */
+		spin_lock_irqsave(&tpt->thd_lock, flags);
+		tpt->next_state = THREAD_READY;
+		wake_up(&tpt->thread_waitq);
+		spin_unlock_irqrestore(&tpt->thd_lock, flags);
+
+		spin_lock_irqsave(&queue->queue_lock, flags);
+		mbtp_queue_shrink_thread(queue, tpt);
 		spin_unlock_irqrestore(&queue->queue_lock, flags);
 	}
 

@@ -106,22 +106,35 @@ void mbtp_queue_destroy(mbtp_queue_t *queue)
 
 
 		spin_lock_irqsave(&tpt->thd_lock, flags);
-		printk( KERN_ERR "sha256-queue thd %p in state %d", tpt, tpt->next_state);
+		printk( KERN_ERR "sha256-queue thd %p in state %d, next is %d ",
+				tpt, tpt->curr_state, tpt->next_state);
 
 		/* thread may be going ready or running */
 		if (tpt->next_state != THREAD_READY) {
+			if (tpt->curr_state == THREAD_READY && tpt->next_state == THREAD_RUNNING){
+
+				printk( KERN_ERR "sha256-queue thd %p is retriggered ", tpt);
+						/* in case there are thd in queue who still */
+						wake_up(&tpt->thread_waitq);
+			}
 			add_wait_queue_exclusive(&tpt->thread_waitq, &queue_wait);
-			spin_unlock_irqrestore(&tpt->thd_lock, flags);
+
+			printk( KERN_ERR "sha256-queue is waiting thd %p ", tpt);
+
 			set_current_state(TASK_INTERRUPTIBLE);
+			spin_unlock_irqrestore(&tpt->thd_lock, flags);
 
 			schedule();
 
-			__set_current_state(TASK_RUNNING);
 			spin_lock_irqsave(&tpt->thd_lock, flags);
+			__set_current_state(TASK_RUNNING);
+			printk( KERN_ERR "sha256-queue is waked by thd %p ", tpt);
 			remove_wait_queue(&tpt->thread_waitq, &queue_wait);
 		}
 
 		spin_unlock_irqrestore(&tpt->thd_lock, flags);
+
+		printk( KERN_ERR "sha256-queue is going to shrink thd %p ", tpt);
 		mbtp_queue_shrink_thread(queue, tpt);
 	}
 

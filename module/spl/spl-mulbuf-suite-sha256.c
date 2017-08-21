@@ -105,7 +105,7 @@ void mulbuf_suite_sha256_fini(void)
 
 #include <sys/mulbuf_test.h>
 
-		threads_task_test();
+		//threads_task_test();
 
 
 	for (i = 0; i < nqueue; i++) {

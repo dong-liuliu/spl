@@ -39,14 +39,13 @@ static int mbtp_thread_routine(void *args)
 		case THREAD_READY:
 			/* tqt->next_state is determined by queue or pool during wait */
 			add_wait_queue_exclusive(&tpt->thread_waitq, &wait);
-			spin_unlock_irqrestore(&tpt->thd_lock, flags);
-
 			set_current_state(TASK_INTERRUPTIBLE);
+			spin_unlock_irqrestore(&tpt->thd_lock, flags);
 
 			schedule();
 
-			__set_current_state(TASK_RUNNING);
 			spin_lock_irqsave(&tpt->thd_lock, flags);
+			__set_current_state(TASK_RUNNING);
 			remove_wait_queue(&tpt->thread_waitq, &wait);
 
 			break;
@@ -122,13 +121,13 @@ static void mbtp_thread_destroy(mbtp_thread_t *tpt)
 	spin_lock_irqsave(&tpt->thd_lock, flags);
 	if (tpt->curr_state != THREAD_EXIT) {
 		add_wait_queue_exclusive(&tpt->thread_waitq, &wait);
-		spin_unlock_irqrestore(&tpt->thd_lock, flags);
 		set_current_state(TASK_INTERRUPTIBLE);
+		spin_unlock_irqrestore(&tpt->thd_lock, flags);
 
 		schedule();
 
-		__set_current_state(TASK_RUNNING);
 		spin_lock_irqsave(&tpt->thd_lock, flags);
+		__set_current_state(TASK_RUNNING);
 		remove_wait_queue(&tpt->thread_waitq, &wait);
 	}
 	spin_unlock_irqrestore(&tpt->thd_lock, flags);
@@ -172,13 +171,13 @@ int mulbuf_thdpool_create(mulbuf_thdpool_t **pool_r, const char *name, int threa
 		spin_lock_irqsave(&tpt->thd_lock, flags);
 		if (tpt->curr_state == THREAD_SETUP) {
 			add_wait_queue_exclusive(&tpt->thread_waitq, &pool_wait);
-			spin_unlock_irqrestore(&tpt->thd_lock, flags);
 			set_current_state(TASK_INTERRUPTIBLE);
+			spin_unlock_irqrestore(&tpt->thd_lock, flags);
 
 			schedule();
 
-			__set_current_state(TASK_RUNNING);
 			spin_lock_irqsave(&tpt->thd_lock, flags);
+			__set_current_state(TASK_RUNNING);
 			remove_wait_queue(&tpt->thread_waitq, &pool_wait);
 		}
 		spin_unlock_irqrestore(&tpt->thd_lock, flags);
@@ -256,13 +255,13 @@ int mulbuf_thdpool_get_thread(mulbuf_thdpool_t *pool, mbtp_thread_t **tpt_r)
 				spin_lock_irqsave(&tpt->thd_lock, flags);
 				if (tpt->curr_state == THREAD_SETUP) {
 					add_wait_queue_exclusive(&tpt->thread_waitq, &pool_wait);
-					spin_unlock_irqrestore(&tpt->thd_lock, flags);
 					set_current_state(TASK_INTERRUPTIBLE);
+					spin_unlock_irqrestore(&tpt->thd_lock, flags);
 
 					schedule();
 
-					__set_current_state(TASK_RUNNING);
 					spin_lock_irqsave(&tpt->thd_lock, flags);
+					__set_current_state(TASK_RUNNING);
 					remove_wait_queue(&tpt->thread_waitq, &pool_wait);
 				}
 				spin_unlock_irqrestore(&tpt->thd_lock, flags);
@@ -325,7 +324,7 @@ void mbtp_thread_run_fn(mbtp_thread_t *tpt, threadp_func_t fn, void *arg)
 	tpt->fn = fn;
 	tpt->arg = arg;
 	tpt->next_state = THREAD_RUNNING;
-	/* trigger tgt to run fn */
+	/* trigger tpt to run fn */
 	wake_up(&tpt->thread_waitq);
 
 	spin_unlock_irqrestore(&tpt->thd_lock, flags);
