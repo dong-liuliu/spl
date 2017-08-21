@@ -46,6 +46,9 @@ $(obj)/isa-l.o_shipped:
 	@echo '-mcmodel=kernel -fno-stack-protector \' >> @HASH_MB_SRC@/Makefile.kern
 	@echo '-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0' >> @HASH_MB_SRC@/Makefile.kern
 	@echo '$$(product).o_shipped: D+=ALIGN_STACK REL_TEXT' >> @HASH_MB_SRC@/Makefile.kern
+	@echo '$$(product).o_shipped: DEFINES+=-D NDEBUG' >> @HASH_MB_SRC@/Makefile.kern
+	@echo '$$(product).o_shipped: DEBUG_$$(AS)=' >> @HASH_MB_SRC@/Makefile.kern
+	@echo '$$(product).o_shipped: DEBUG=' >> @HASH_MB_SRC@/Makefile.kern
 	@echo '$$(product).o_shipped: $$(objs)' >> @HASH_MB_SRC@/Makefile.kern
 	@echo '	@echo "  ---> Creating bin $$@"' >> @HASH_MB_SRC@/Makefile.kern
 	@echo '	@$$(AR) $$(ARFLAGS) $$^' >> @HASH_MB_SRC@/Makefile.kern
@@ -53,10 +56,12 @@ $(obj)/isa-l.o_shipped:
 	@# compile kernel space object from isa-l crypto
 	@echo "Get multi-buffer hash object from isa-l crypto"
 	@if [ -f @HASH_MB_SRC@/isa-l.o_shipped ]; then \
-	cp @HASH_MB_SRC@/isa-l.o_shipped $(obj); \
+	mv @HASH_MB_SRC@/isa-l.o_shipped $(obj); \
 	else echo "Please run $(MAKE) -C @HASH_MB_SRC@ -f Makefile.kern kernobj"; \
-	echo "then continue run make"; fi
+	echo "then continue run make"; exit 1; fi
 endif
 
-
+ $(product).o_shipped: DEBUG_$(AS)=    # Don't put debug symbols in the lib
+ $(product).o_shipped: DEBUG=
+ $(product).o_shipped: DEFINES+=-D NDEBUG
 	
