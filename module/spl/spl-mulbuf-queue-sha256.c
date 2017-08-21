@@ -1,4 +1,6 @@
 
+#if defined(__x86_64) && defined(_KERNEL) && defined(HAVE_HASH_MB)
+
 #include <sys/mulbuf_queue_sha256.h>
 // TODO isa-l header location
 //#include <isa-l.h>
@@ -498,3 +500,5 @@ void mulbuf_sha256_fn(void *arg)
 
 	return;
 }
+
+#endif /* _KERNEL && __x86_64 && HAVE_HASH_MB */

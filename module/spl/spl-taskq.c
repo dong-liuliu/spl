@@ -1016,7 +1016,6 @@ taskq_create(const char *name, int nthreads, pri_t pri,
 
 	/* Scale the number of threads using nthreads as a percentage */
 	if (flags & TASKQ_THREADS_CPU_PCT) {
-#define HAVE_HASH_MB
 #if defined(__x86_64) && defined(_KERNEL) && defined(HAVE_HASH_MB)
 		/* Eightfold threads maximum percentage of cpu */
 		ASSERT(nthreads <= 100 * 8);

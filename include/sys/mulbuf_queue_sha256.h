@@ -8,6 +8,8 @@
 #ifndef MULBUF_QUEUE_SHA256_H_
 #define MULBUF_QUEUE_SHA256_H_
 
+#if defined(__x86_64) && defined(_KERNEL) && defined(HAVE_HASH_MB)
+
 #include <linux/interrupt.h>
 #include <linux/kthread.h>
 #include <sys/kmem.h>
@@ -22,5 +24,12 @@ void mulbuf_suite_sha256_fini(void);
 int mulbuf_sha256_queue_choose(void *buffer, size_t size,
 		unsigned char *digest, mbtp_queue_t *queue);
 int mulbuf_sha256(void *buffer, size_t size, unsigned char *digest);
+
+#else
+
+#define mulbuf_suite_sha256_init	0
+#define mulbuf_suite_sha256_fini	0
+
+#endif /* _KERNEL && __x86_64 && HAVE_HASH_MB */
 
 #endif /* MULBUF_QUEUE_SHA256_H_ */

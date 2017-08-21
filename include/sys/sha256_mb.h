@@ -30,6 +30,8 @@
 #ifndef _SHA256_MB_H_
 #define _SHA256_MB_H_
 
+#if defined(__x86_64) && defined(_KERNEL) && defined(HAVE_HASH_MB)
+
 /**
  *  @file sha256_mb.h
  *  @brief Multi-buffer CTX API SHA256 function prototypes and structures
@@ -442,5 +444,7 @@ SHA256_JOB* sha256_mb_mgr_flush_avx512_ni   (SHA256_MB_JOB_MGR *state);
 #ifdef __cplusplus
 }
 #endif
+
+#endif /* _KERNEL && __x86_64 && HAVE_HASH_MB */
 
 #endif // _SHA256_MB_H_
